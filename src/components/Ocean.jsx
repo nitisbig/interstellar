@@ -1,13 +1,16 @@
 import { useEffect, useRef } from "react";
 
 /**
- * Ocean — a procedural night seascape rendered to canvas.
+ * Ocean — a procedural golden-hour seascape rendered to canvas.
  *
- * A calm open ocean under the northern lights: a deep night sky with drifting
- * aurora curtains, a low pale moon laying a silver road across gentle swell,
- * and a lone sailboat that sits almost still and breathes with the water. Like
- * the Starfield it reads `motionRef` (shared per-frame audio state) so the
- * swell, aurora and moon-road shimmer breathe with the music.
+ * A high aerial (drone) view of the open sea near sunset: a clean, empty sky —
+ * just a warm pale-gold haze at the horizon easing up into a cool blue-grey —
+ * over a vast field of wind chop. The water reads light and hazy near the
+ * horizon, deepens to ocean blue, and falls to a dark navy in the foreground,
+ * with countless tiny sun glints riding the wavelets. A lone white sloop sits
+ * almost still, center-right, breathing with the swell. Like the Starfield it
+ * reads `motionRef` (shared per-frame audio state) so the chop and the glints
+ * breathe gently with the music — but the scene stays calm and photographic.
  *
  * Everything is drawn in a normalised (u, v) water space and projected to the
  * screen each frame:
@@ -28,14 +31,15 @@ export default function Ocean({ motionRef }) {
     let t = 0; // accumulated seconds (smooth, frame-rate independent)
 
     // ---- composition constants -------------------------------------------
-    const HORIZON = 0.34; // fraction of height where sea meets sky (lower than
-    //                       the old framing → more sky for the aurora to fill)
-    const MOON_U = -0.16; // the moon (and its reflected road) sits left of centre
-    const GLITTER = 90;
+    // A drone shot looks well down at the water, so the horizon sits high and
+    // the sea fills most of the frame.
+    const HORIZON = 0.18; // fraction of height where sea meets sky
+    const SUN_U = 0.05; // the sun's azimuth — just right of centre
 
     // The sea is rendered as a deck of travelling wave ribbons stacked from the
     // horizon toward the viewer and painted back-to-front, so a near crest
-    // genuinely hides the trough behind it (true swell, not flat shimmer).
+    // genuinely hides the trough behind it (true relief, not flat shimmer).
+    // Fine sun glints are scattered on top for the photographic chop texture.
     let NROWS = 110; // depth rows (recomputed on resize)
     let COLS = 180; // horizontal samples per row
     let xArr = new Float32Array(COLS); // screen x for each column
@@ -58,59 +62,39 @@ export default function Ocean({ motionRef }) {
     const rgb = (c, a = 1) =>
       `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
-    // ---- palette (clear arctic night) ------------------------------------
-    // a near-black zenith eases down through deep blue to a cool grey-blue
-    // band at the waterline — a calm, real night rather than golden hour.
-    const SKY_TOP = [5, 8, 20]; // near-black zenith
-    const SKY_HIGH = [10, 18, 40]; // deep blue
-    const SKY_MID = [16, 30, 54]; // mid blue
-    const SKY_HZN = [34, 52, 72]; // cool grey-blue at the horizon
-    const MOON_CORE = [234, 242, 250];
-    const MOON_BODY = [198, 212, 230];
+    // ---- palette (golden-hour open ocean) --------------------------------
+    // SKY: a cool, hazy blue-grey high up easing down to a warm pale gold at
+    // the waterline. No objects — just light.
+    const SKY_TOP = [150, 165, 178]; // cool hazy blue-grey (top of frame)
+    const SKY_MID = [188, 192, 192]; // neutral haze
+    const SKY_HZN = [240, 228, 202]; // warm pale gold at the horizon
+    const SUN_WARM = [255, 238, 210]; // the low diffuse sun-glow on the haze
 
-    const SEA_HZN = [40, 60, 76]; // cool, hazy far water
-    const SEA_MID = [20, 38, 54];
-    const SEA_DEEP = [5, 13, 22]; // near-black foreground
+    // SEA: light, hazy steel near the horizon (reflecting the bright sky) →
+    // ocean blue → near-black navy in the foreground.
+    const SEA_HZN = [120, 140, 156]; // bright hazy far water
+    const SEA_MID = [44, 76, 102];
+    const SEA_DEEP = [10, 24, 38]; // deep navy foreground
 
-    const HL_LIGHT = [206, 226, 230]; // moonlit crest
-    const HL_COOL = [96, 134, 146]; // mid crest
-    const HL_DARK = [22, 40, 52]; // foreground crest (barely lit)
+    // crest / glint colours — warm sun-white near the horizon cooling to steel,
+    // and a dim navy for the barely-lit foreground.
+    const HL_WARM = [252, 240, 214]; // sun glint on far chop
+    const HL_COOL = [150, 180, 198]; // cool steel glint mid-water
 
-    // aurora ribbon colours — classic green, teal and a violet upper veil
-    const AURORA = [
-      [70, 230, 150],
-      [64, 210, 205],
-      [150, 120, 235],
-    ];
-
-    // ---- moon glitter (sparkles riding the moon road) --------------------
-    let glints = [];
-    let stars = []; // sky stars, twinkling above the horizon
+    // ---- chop glints (sun sparkles riding the wavelets) ------------------
+    let chop = []; // dense fine flecks across the whole sea
 
     function build() {
-      glints = [];
-      for (let i = 0; i < GLITTER; i++) {
-        glints.push({
-          u: rand(-0.95, 0.95),
-          v: rand(0.004, 0.5), // strung down the moon road toward the viewer
+      // Scatter glints across the sea, biased toward the horizon where the low
+      // sun rakes the chop and the texture reads densest.
+      chop = [];
+      const NCHOP = clamp(Math.round((w * h) / 900), 1200, 3200);
+      for (let i = 0; i < NCHOP; i++) {
+        chop.push({
+          u: rand(-1.08, 1.08),
+          v: 0.01 + Math.pow(Math.random(), 1.6) * 0.97, // dense near horizon
           ph: rand(0, Math.PI * 2),
-          sp: rand(2.0, 5),
-        });
-      }
-
-      // scatter stars across the night sky (denser toward the zenith, thinning
-      // out near the lighter horizon where they'd wash out)
-      stars = [];
-      const NSTARS = 260;
-      for (let i = 0; i < NSTARS; i++) {
-        const sy = Math.pow(Math.random(), 1.5); // bias upward
-        stars.push({
-          x: Math.random(),
-          y: sy * 0.92, // fraction of the sky band (0 top → 1 horizon)
-          r: rand(0.3, 1.3),
-          ph: rand(0, Math.PI * 2),
-          sp: rand(0.6, 2.2),
-          warm: Math.random() < 0.15, // a few amber stars among the cool ones
+          sp: rand(0.8, 3.2),
         });
       }
     }
@@ -129,7 +113,7 @@ export default function Ocean({ motionRef }) {
       // scale the wave mesh to the viewport (denser on big screens, cheaper on
       // small ones) and (re)allocate the per-vertex buffers.
       COLS = clamp(Math.round(w / 9), 90, 240);
-      NROWS = clamp(Math.round((h - yH) / 7), 70, 170);
+      NROWS = clamp(Math.round((h - yH) / 6), 80, 190);
       xArr = new Float32Array(COLS);
       topArr = new Float32Array(NROWS * COLS);
       hlArr = new Float32Array(NROWS * COLS);
@@ -144,210 +128,160 @@ export default function Ocean({ motionRef }) {
       const x = w * (0.5 + u * spread);
       return [x, y];
     }
+    // horizontal spread factor at a given depth (shared with the ribbon paint)
+    const spreadAt = (v) => 0.5 * (0.82 + 0.18 * v);
 
     // Surface height field, normalised to roughly -1..1. Four sine trains of
-    // differing wavelength and heading sum into irregular swell; every train's
-    // phase advances with time so the crests roll toward the viewer (increasing
-    // v). Tuned gentle here — long, low swell rather than chop. This is the
-    // single source of truth for the wave shape — the mesh, the crest sheen,
-    // the glitter and the boat's bob all read from it.
+    // differing wavelength and heading sum into irregular wind chop; every
+    // train's phase advances with time so the wavelets roll toward the viewer
+    // (increasing v). Tuned as short, busy chop rather than long swell — this is
+    // the single source of truth for the wave shape: the mesh, the crest sheen,
+    // the glints and the boat's bob all read from it.
     function waveDisp(u, v, time) {
-      const a = Math.sin(v * 15.0 - time * 0.8 + u * 1.0);
-      const b = Math.sin(v * 30.0 - time * 1.3 - u * 1.8 + 1.3);
-      const c = Math.sin(v * 55.0 - time * 1.9 + u * 3.0 + 4.0);
-      const d = Math.sin(v * 96.0 - time * 2.5 - u * 4.2 + 2.1);
-      return a * 0.5 + b * 0.3 + c * 0.12 + d * 0.06;
+      const a = Math.sin(v * 16.0 - time * 0.6 + u * 1.2);
+      const b = Math.sin(v * 34.0 - time * 1.0 - u * 2.4 + 1.3);
+      const c = Math.sin(v * 66.0 - time * 1.6 + u * 3.6 + 4.0);
+      const d = Math.sin(v * 120.0 - time * 2.2 - u * 5.5 + 2.1);
+      return a * 0.42 + b * 0.3 + c * 0.16 + d * 0.12;
     }
 
     // vertical wave amplitude in screen px at depth v — tiny at the compressed
-    // horizon, modest and rolling up close (the audio envelope swells it).
-    // Kept well below the old scene so the sea reads calm.
+    // horizon, modest up close. Kept low so the sea reads as calm chop.
     function ampAt(v, mul) {
-      return lerp(0.3, 15, Math.pow(v, 1.45)) * mul;
+      return lerp(0.2, 9, Math.pow(v, 1.5)) * mul;
     }
 
-    // light reaching the surface: strong near the moon road, dim up close.
-    function moonlight(u, v) {
-      const depth = lerp(1.0, 0.14, smooth(0, 1, v));
-      const toward = 1 - 0.3 * Math.abs(u - MOON_U); // brighter near the moon
-      return depth * clamp(toward, 0.5, 1);
-    }
-
-    // ---- aurora -----------------------------------------------------------
-    // Several luminous curtains hang in the sky. Each is a band of vertical
-    // streaks whose lower hem waves smoothly across x and shimmers along its
-    // length; painted additively so overlaps bloom like real aurora.
-    const curtains = [
-      { c: AURORA[0], hem: 0.80, top: 0.12, amp: 0.06, k: 3.0, sp: 0.18, a: 0.22 },
-      { c: AURORA[1], hem: 0.66, top: 0.06, amp: 0.05, k: 4.5, sp: -0.13, a: 0.16 },
-      { c: AURORA[2], hem: 0.92, top: 0.36, amp: 0.08, k: 2.2, sp: 0.24, a: 0.12 },
-    ];
-
-    function drawAurora(time, env, beat) {
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const intensity = 0.55 + env * 0.5 + beat * 0.3;
-      const cols = 96;
-      const stepW = w / cols;
-      for (const cur of curtains) {
-        for (let i = 0; i < cols; i++) {
-          const fx = i / (cols - 1);
-          const x = fx * w;
-          const hemY =
-            yH *
-            (cur.hem +
-              cur.amp * Math.sin(fx * Math.PI * cur.k + time * cur.sp * 3) +
-              cur.amp * 0.4 * Math.sin(fx * Math.PI * cur.k * 2.7 - time * cur.sp * 4.3));
-          const topY = yH * cur.top;
-          const flick = 0.55 + 0.45 * Math.sin(fx * 30 + time * 1.1 + cur.k);
-          const a = cur.a * intensity * flick;
-          if (a < 0.01) continue;
-          const g = ctx.createLinearGradient(0, topY, 0, hemY);
-          g.addColorStop(0, rgb(cur.c, 0));
-          g.addColorStop(0.55, rgb(cur.c, a * 0.35));
-          g.addColorStop(1, rgb(cur.c, a));
-          ctx.fillStyle = g;
-          ctx.fillRect(x - 0.5, topY, stepW + 1, hemY - topY);
-        }
-      }
-      ctx.restore();
+    // light reaching the surface from the bright sky: strong near the horizon,
+    // falling toward the dark foreground, with a broad warm brightening toward
+    // the sun's azimuth.
+    function seaLight(u, v) {
+      const depth = lerp(1.0, 0.12, smooth(0, 1, v));
+      const sun = 1 - 0.32 * clamp(Math.abs(u - SUN_U), 0, 1);
+      return depth * sun;
     }
 
     // ---- the boat ---------------------------------------------------------
-    // a larger, more detailed sloop that sits almost still in calm water and
-    // breathes with the swell — no skating across the sea.
-    const boat = { u: MOON_U + 0.34, v: 0.5 };
+    // a small white sloop seen from a high angle, sitting almost still in the
+    // chop and breathing with it — center-right, mid-distance.
+    const boat = { u: 0.24, v: 0.46 };
 
     function drawBoat(time, env) {
       // barely-there drift — a long, slow wander that keeps the boat steady in
       // frame rather than travelling.
-      const bu = boat.u + Math.sin(time * 0.018) * 0.022 + Math.sin(time * 0.009) * 0.012;
-      const bv = boat.v + Math.sin(time * 0.014 + 1.2) * 0.008;
+      const bu = boat.u + Math.sin(time * 0.02) * 0.015 + Math.sin(time * 0.009) * 0.008;
+      const bv = boat.v + Math.sin(time * 0.015 + 1.2) * 0.006;
       const [bx, byBase] = project(bu, bv);
 
-      // calm float: ride the surface height beneath the hull with a gentle
-      // damped bob. No beat-kick — the music swells the sea, not the boat.
+      // calm float: ride the surface height beneath the hull with a gentle bob.
       const swell = waveDisp(bu, bv, time);
-      const bob = swell * ampAt(bv, 0.5 + env * 0.15);
+      const bob = swell * ampAt(bv, 0.6 + env * 0.1);
       const by = byBase + bob;
-      // roll softly into the local slope of the swell, plus a slow idle sway
-      const slope = waveDisp(bu, bv + 0.012, time) - swell;
-      const roll = Math.sin(time * 0.32) * 0.012 + slope * 2.0;
-      const s = lerp(2.0, 3.4, bv); // perspective scale — noticeably bigger
+      // roll softly into the local slope of the chop, plus a slow idle sway
+      const slope = waveDisp(bu, bv + 0.01, time) - swell;
+      const roll = Math.sin(time * 0.3) * 0.01 + slope * 1.6;
+      const s = lerp(1.0, 1.5, bv); // perspective scale — small, like the photo
 
-      // ---- broken moonlit reflection on the water, just below the hull ----
+      // ---- contact shadow + broken reflection on the water, below the hull --
       ctx.save();
-      for (let i = 0; i < 8; i++) {
-        const ry = by + (4 + i * 3.4) * s;
-        const fade = (1 - i / 8) * 0.16;
-        const jitter = Math.sin(time * 2.4 + i * 1.3 + bx) * 2.4 * s;
-        ctx.fillStyle = rgb(HL_LIGHT, fade * (0.6 + 0.4 * Math.sin(time * 3 + i)));
-        ctx.fillRect(bx - 7 * s + jitter, ry, 14 * s, 1.1 * s);
+      // soft dark contact shadow hugging the waterline
+      ctx.fillStyle = rgb(SEA_DEEP, 0.4);
+      ctx.beginPath();
+      ctx.ellipse(bx, by + 2 * s, 13 * s, 2.4 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // a few broken pale streaks — the white sails mirrored in the chop
+      for (let i = 0; i < 6; i++) {
+        const ry = by + (3 + i * 2.6) * s;
+        const fade = (1 - i / 6) * 0.18;
+        const jitter = Math.sin(time * 2.2 + i * 1.3 + bx) * 1.8 * s;
+        ctx.fillStyle = rgb([232, 236, 238], fade * (0.6 + 0.4 * Math.sin(time * 3 + i)));
+        ctx.fillRect(bx - 4 * s + jitter, ry, 8 * s, 1.0 * s);
       }
       ctx.restore();
 
-      // ---- hull + rig ----
+      // ---- hull + rig (drawn in local, scaled units) ----
       ctx.save();
       ctx.translate(bx, by);
       ctx.rotate(roll);
       ctx.scale(s, s);
 
-      // hull — a long dark sloop hull with a raised bow
-      ctx.fillStyle = "rgba(14,20,28,0.96)";
+      // hull — a compact dark sloop hull with a slightly raised bow
+      ctx.fillStyle = "rgba(26,32,40,0.96)";
       ctx.beginPath();
-      ctx.moveTo(-16, 0);
-      ctx.quadraticCurveTo(-15.5, 4.2, -8, 5.4);
-      ctx.lineTo(12, 5.4);
-      ctx.quadraticCurveTo(18.5, 4.4, 19, -0.4); // upswept bow
-      ctx.lineTo(-16, 0);
+      ctx.moveTo(-11, 0);
+      ctx.quadraticCurveTo(-10.5, 3.0, -5, 3.8);
+      ctx.lineTo(8, 3.8);
+      ctx.quadraticCurveTo(13, 3.0, 13.5, -0.3); // upswept bow
+      ctx.lineTo(-11, 0);
       ctx.closePath();
       ctx.fill();
 
-      // moonlit waterline along the top edge of the hull
-      ctx.strokeStyle = "rgba(170,196,206,0.45)";
-      ctx.lineWidth = 0.55;
+      // sunlit waterline along the top edge of the hull
+      ctx.strokeStyle = "rgba(240,234,220,0.5)";
+      ctx.lineWidth = 0.5;
       ctx.beginPath();
-      ctx.moveTo(-15.5, -0.1);
-      ctx.lineTo(18.6, -0.4);
+      ctx.moveTo(-10.6, -0.1);
+      ctx.lineTo(13.1, -0.3);
       ctx.stroke();
 
-      // small cabin with a warm lit porthole
-      ctx.fillStyle = "rgba(26,34,44,0.96)";
-      ctx.beginPath();
-      ctx.moveTo(-6, 0);
-      ctx.lineTo(-5, -3.4);
-      ctx.lineTo(2.5, -3.4);
-      ctx.lineTo(3.5, 0);
-      ctx.closePath();
-      ctx.fill();
-      ctx.fillStyle = "rgba(255,206,128,0.85)";
-      ctx.fillRect(-3.2, -2.6, 2.4, 1.7);
-
-      // mast + boom
-      ctx.strokeStyle = "rgba(44,50,58,0.92)";
-      ctx.lineWidth = 1.0;
-      ctx.beginPath();
-      ctx.moveTo(2, -1);
-      ctx.lineTo(2, -42); // taller mast for the bigger boat
-      ctx.stroke();
+      // mast
+      ctx.strokeStyle = "rgba(60,64,70,0.9)";
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.moveTo(2, -3);
-      ctx.lineTo(15, -2.6); // boom
+      ctx.moveTo(1.5, -1);
+      ctx.lineTo(1.5, -34);
       ctx.stroke();
 
-      // mainsail (a softly curved triangle catching the cool moonlight)
-      const main = ctx.createLinearGradient(2, -40, 14, -3);
-      main.addColorStop(0, "rgba(228,238,242,0.97)");
-      main.addColorStop(1, "rgba(150,170,186,0.9)");
+      // mainsail — a tall white triangle behind the mast, lit warm from the
+      // sun side (left) and cooling toward the right
+      const main = ctx.createLinearGradient(-6, -30, 10, -3);
+      main.addColorStop(0, "rgba(255,250,240,0.98)");
+      main.addColorStop(1, "rgba(206,216,222,0.92)");
       ctx.fillStyle = main;
       ctx.beginPath();
-      ctx.moveTo(3, -40);
-      ctx.quadraticCurveTo(16, -22, 14.5, -3.5);
-      ctx.lineTo(3, -3.5);
+      ctx.moveTo(2, -33);
+      ctx.quadraticCurveTo(11, -18, 10, -3.2);
+      ctx.lineTo(2, -3.2);
       ctx.closePath();
       ctx.fill();
-      // a couple of faint horizontal batten seams on the main
-      ctx.strokeStyle = "rgba(120,140,156,0.4)";
-      ctx.lineWidth = 0.3;
+
+      // jib (foresail) — a smaller white triangle ahead of the mast
+      const jib = ctx.createLinearGradient(-9, -28, 1, -3);
+      jib.addColorStop(0, "rgba(248,244,236,0.96)");
+      jib.addColorStop(1, "rgba(196,206,214,0.9)");
+      ctx.fillStyle = jib;
       ctx.beginPath();
-      ctx.moveTo(3, -28); ctx.lineTo(11.5, -27);
-      ctx.moveTo(3, -16); ctx.lineTo(13, -15.5);
+      ctx.moveTo(1, -30);
+      ctx.quadraticCurveTo(-7, -16, -8, -2.6);
+      ctx.lineTo(1, -2.6);
+      ctx.closePath();
+      ctx.fill();
+
+      // faint seam between the two sails to separate them crisply
+      ctx.strokeStyle = "rgba(120,134,146,0.35)";
+      ctx.lineWidth = 0.35;
+      ctx.beginPath();
+      ctx.moveTo(1.2, -30);
+      ctx.lineTo(1.2, -3);
       ctx.stroke();
-
-      // jib (foresail) ahead of the mast
-      ctx.fillStyle = "rgba(206,218,226,0.93)";
-      ctx.beginPath();
-      ctx.moveTo(1, -37);
-      ctx.quadraticCurveTo(-10, -19, -11, -2.5);
-      ctx.lineTo(1, -2.5);
-      ctx.closePath();
-      ctx.fill();
-
-      // tiny masthead light
-      ctx.fillStyle = "rgba(255,240,210,0.95)";
-      ctx.fillRect(1.4, -42.6, 1.2, 1.2);
 
       ctx.restore();
 
       // ---- faint trailing wake on the calm surface ----
       ctx.save();
-      ctx.strokeStyle = rgb(HL_LIGHT, 0.08);
-      ctx.lineWidth = 1.4 * s;
+      ctx.strokeStyle = rgb([222, 230, 234], 0.07);
+      ctx.lineWidth = 1.2 * s;
       ctx.beginPath();
-      ctx.moveTo(bx - 14 * s, by + 2 * s);
-      ctx.quadraticCurveTo(bx - 90 * s, by + 7 * s, bx - 190 * s, by + 2.5 * s);
+      ctx.moveTo(bx - 10 * s, by + 2 * s);
+      ctx.quadraticCurveTo(bx - 70 * s, by + 6 * s, bx - 150 * s, by + 2 * s);
       ctx.stroke();
       ctx.restore();
     }
 
-    // a tiny distant vessel near the horizon — a far light on the water.
+    // a tiny distant speck near the horizon — a lone bird against the haze.
     function drawSpeck() {
-      const [sx, sy] = project(0.66, 0.03);
-      ctx.fillStyle = rgb(MOON_CORE, 0.6);
-      ctx.fillRect(sx - 0.6, sy - 2.4, 1.2, 2.4);
-      ctx.fillStyle = rgb(SEA_DEEP, 0.6);
-      ctx.fillRect(sx - 1.1, sy, 2.2, 0.9);
+      const [sx, sy] = project(0.42, 0.012);
+      ctx.fillStyle = rgb([30, 36, 44], 0.5);
+      ctx.fillRect(sx - 1, sy - 6, 2, 1);
     }
 
     // ---- frame ------------------------------------------------------------
@@ -360,90 +294,63 @@ export default function Ocean({ motionRef }) {
       const env = m.envelope;
       const beat = m.beat;
 
+      const sunX = w * (0.5 + SUN_U * 0.5);
+
       // ---------- SKY ----------
-      // a four-stop night ramp: black zenith → deep blue → blue → cool horizon
+      // a clean haze ramp: cool blue-grey up top → neutral → warm gold horizon.
+      // Nothing else lives in the sky.
       const sky = ctx.createLinearGradient(0, 0, 0, yH + 4);
       sky.addColorStop(0, rgb(SKY_TOP));
-      sky.addColorStop(0.45, rgb(SKY_HIGH));
-      sky.addColorStop(0.78, rgb(SKY_MID));
+      sky.addColorStop(0.5, rgb(SKY_MID));
+      sky.addColorStop(0.85, rgb(mix(SKY_MID, SKY_HZN, 0.6)));
       sky.addColorStop(1, rgb(SKY_HZN));
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, yH + 4);
 
-      // ---------- STARS ----------
-      // twinkle across the sky, fading gently toward the brighter horizon
-      for (const st of stars) {
-        const sy = st.y * yH;
-        const fadeUp = clamp(1 - st.y * 0.7, 0, 1);
-        const tw = 0.45 + 0.55 * Math.sin(t * st.sp + st.ph);
-        const a = clamp(tw * fadeUp * (0.6 + env * 0.4), 0, 1) * 0.95;
-        if (a < 0.02) continue;
-        ctx.fillStyle = rgb(st.warm ? [255, 226, 196] : [220, 230, 255], a);
-        ctx.fillRect(st.x * w, sy, st.r, st.r);
-      }
-
-      // ---------- AURORA ----------
-      drawAurora(t, env, beat);
-
-      // ---------- MOON ----------
-      // a low pale moon, off-centre, lighting the scene and casting the road
-      const moonX = w * (0.5 + MOON_U * 0.5);
-      const moonR = h * (0.05 + env * 0.004);
-      const moonY = yH * 0.44;
-      // soft halo
-      const mhalo = ctx.createRadialGradient(
-        moonX, moonY, moonR * 0.6, moonX, moonY, moonR * 4.2
-      );
-      mhalo.addColorStop(0, rgb(MOON_CORE, 0.24));
-      mhalo.addColorStop(1, rgb(MOON_CORE, 0));
-      ctx.fillStyle = mhalo;
-      ctx.fillRect(moonX - moonR * 4.2, moonY - moonR * 4.2, moonR * 8.4, moonR * 8.4);
-      // disc
-      const md = ctx.createRadialGradient(
-        moonX - moonR * 0.3, moonY - moonR * 0.3, moonR * 0.2, moonX, moonY, moonR
-      );
-      md.addColorStop(0, rgb(MOON_CORE));
-      md.addColorStop(1, rgb(MOON_BODY));
-      ctx.fillStyle = md;
-      ctx.beginPath();
-      ctx.arc(moonX, moonY, moonR, 0, Math.PI * 2);
-      ctx.fill();
-      // faint craters / maria
-      ctx.fillStyle = rgb(mix(MOON_BODY, SKY_MID, 0.3), 0.45);
-      ctx.beginPath();
-      ctx.arc(moonX - moonR * 0.28, moonY + moonR * 0.12, moonR * 0.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(moonX + moonR * 0.32, moonY - moonR * 0.22, moonR * 0.13, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.beginPath();
-      ctx.arc(moonX + moonR * 0.1, moonY + moonR * 0.34, moonR * 0.1, 0, Math.PI * 2);
-      ctx.fill();
-
-      // low moon-glow blooming over the horizon under the road
-      const glow = ctx.createRadialGradient(
-        moonX, yH, 0, moonX, yH, w * (0.26 + env * 0.06)
-      );
-      glow.addColorStop(0, rgb(MOON_CORE, clamp(0.3 + env * 0.14, 0, 0.55)));
-      glow.addColorStop(0.5, rgb(SKY_HZN, 0));
-      ctx.fillStyle = glow;
-      ctx.fillRect(0, 0, w, yH + 24);
+      // low, diffuse sun-glow blooming on the haze just above the horizon
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const sun = ctx.createRadialGradient(sunX, yH, 0, sunX, yH, w * 0.42);
+      sun.addColorStop(0, rgb(SUN_WARM, clamp(0.34 + env * 0.1, 0, 0.55)));
+      sun.addColorStop(0.5, rgb(SUN_WARM, 0.08));
+      sun.addColorStop(1, rgb(SUN_WARM, 0));
+      ctx.fillStyle = sun;
+      ctx.fillRect(0, 0, w, yH + 30);
+      ctx.restore();
 
       // ---------- WATER base ----------
       // flat tonal gradient underneath, so any sub-pixel seams between ribbons
       // read as deep water rather than sky.
       const sea = ctx.createLinearGradient(0, yH, 0, h);
       sea.addColorStop(0, rgb(SEA_HZN));
-      sea.addColorStop(0.06, rgb(mix(SEA_HZN, SEA_MID, 0.55)));
+      sea.addColorStop(0.08, rgb(mix(SEA_HZN, SEA_MID, 0.5)));
       sea.addColorStop(0.4, rgb(SEA_MID));
       sea.addColorStop(1, rgb(SEA_DEEP));
       ctx.fillStyle = sea;
       ctx.fillRect(0, yH, w, h - yH);
 
+      // bright hazy band where the sky reflects on the far water, with a warm
+      // core under the sun — sits in the surface (additive).
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      const bandH = (h - yH) * 0.22;
+      const band = ctx.createLinearGradient(0, yH, 0, yH + bandH);
+      band.addColorStop(0, rgb([214, 216, 210], 0.22));
+      band.addColorStop(0.4, rgb([150, 166, 176], 0.07));
+      band.addColorStop(1, rgb([150, 166, 176], 0));
+      ctx.fillStyle = band;
+      ctx.fillRect(0, yH, w, bandH);
+      const refl = ctx.createRadialGradient(sunX, yH, 0, sunX, yH, w * 0.4);
+      refl.addColorStop(0, rgb(SUN_WARM, 0.18 + env * 0.06));
+      refl.addColorStop(1, rgb(SUN_WARM, 0));
+      ctx.fillStyle = refl;
+      ctx.fillRect(0, yH, w, bandH * 1.4);
+      ctx.restore();
+
       // ---------- WAVE MESH ----------
-      // The swell drifts toward the camera (the time term in waveDisp marches
-      // crests to larger v). Audio swells the amplitude — gently.
-      const ampMul = 1 + env * 0.5 + beat * 0.25;
+      // The chop drifts toward the camera (the time term in waveDisp marches
+      // wavelets to larger v). Audio swells the amplitude — gently.
+      const ampMul = 1 + env * 0.35 + beat * 0.15;
 
       // precompute the normalised x of every column once
       for (let cx = 0; cx < COLS; cx++) {
@@ -473,44 +380,43 @@ export default function Ocean({ motionRef }) {
         const v = ry / (NROWS - 1);
         const row = ry * COLS;
         const next = (ry + 1) * COLS;
+        const sp = spreadAt(v);
 
-        // body colour of this depth band (cool hazy far → deep navy near)
+        // body colour of this depth band (hazy steel far → deep navy near)
         let body;
-        if (v < 0.5) body = mix(SEA_HZN, SEA_MID, smooth(0, 0.5, v));
-        else body = mix(SEA_MID, SEA_DEEP, smooth(0.5, 1, v));
+        if (v < 0.4) body = mix(SEA_HZN, SEA_MID, smooth(0, 0.4, v));
+        else body = mix(SEA_MID, SEA_DEEP, smooth(0.4, 1, v));
 
         // build the closed ribbon polygon: this crest, across, next crest back
         ctx.beginPath();
         ctx.moveTo(0, topArr[row]);
         for (let cx = 0; cx < COLS; cx++) {
-          ctx.lineTo(w * (0.5 + xArr[cx] * 0.5 * (0.82 + 0.18 * v)), topArr[row + cx]);
+          ctx.lineTo(w * (0.5 + xArr[cx] * sp), topArr[row + cx]);
         }
         for (let cx = COLS - 1; cx >= 0; cx--) {
-          ctx.lineTo(
-            w * (0.5 + xArr[cx] * 0.5 * (0.82 + 0.18 * v)),
-            topArr[next + cx]
-          );
+          ctx.lineTo(w * (0.5 + xArr[cx] * sp), topArr[next + cx]);
         }
         ctx.closePath();
         ctx.fillStyle = rgb(body, 1);
         ctx.fill();
 
         // crest sheen as a thin bright stroke riding the top of the ribbon,
-        // brightest where the wave face tips toward the moon and near the road
-        ctx.lineWidth = lerp(0.8, 2.2, v);
-        ctx.beginPath();
+        // brightest where the wave face tips toward the sky and near the
+        // horizon. No moon road — the whole sea catches the broad sky light.
+        ctx.lineWidth = lerp(0.7, 1.8, v);
         let drawing = false;
         for (let cx = 0; cx < COLS; cx++) {
           const u = xArr[cx];
-          const sx = w * (0.5 + u * 0.5 * (0.82 + 0.18 * v));
+          const sx = w * (0.5 + u * sp);
           const sy = topArr[row + cx];
           // up-face (slope<0 means crest rises toward viewer) catches light
-          const face = clamp(-hlArr[row + cx] * 3.5, 0, 1);
-          const lit = moonlight(u, v);
-          const road = smooth(0.5, 0.0, Math.abs(u - MOON_U)); // moon road
-          const a = clamp(face * lit * (0.3 + road * 0.9) * (0.55 + env * 0.5), 0, 0.85);
-          if (a > 0.05) {
-            const col = mix(HL_COOL, HL_LIGHT, clamp(road + (1 - v) * 0.4, 0, 1));
+          const face = clamp(-hlArr[row + cx] * 3.2, 0, 1);
+          const lit = seaLight(u, v);
+          const a = clamp(face * lit * (0.5 + env * 0.4), 0, 0.7);
+          if (a > 0.04) {
+            // warm sun-white near the horizon, cooling to steel toward viewer
+            const warmth = clamp(1 - v * 1.7, 0, 1);
+            const col = mix(HL_COOL, HL_WARM, warmth);
             if (!drawing) {
               ctx.strokeStyle = rgb(col, a);
               ctx.beginPath();
@@ -527,55 +433,70 @@ export default function Ocean({ motionRef }) {
         if (drawing) ctx.stroke();
       }
 
-      // ---------- AURORA REFLECTION ----------
-      // the curtains spill a faint coloured glow onto the far water, mirrored
-      // and additive so it sits in the surface rather than on top of it.
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      const reflH = (h - yH) * 0.32;
-      const refl = ctx.createLinearGradient(0, yH, 0, yH + reflH);
-      refl.addColorStop(0, rgb(AURORA[0], 0.1 * (0.6 + env * 0.5)));
-      refl.addColorStop(0.4, rgb(AURORA[1], 0.05 * (0.6 + env * 0.5)));
-      refl.addColorStop(1, rgb(AURORA[0], 0));
-      ctx.fillStyle = refl;
-      ctx.fillRect(0, yH, w, reflH);
-      ctx.restore();
-
-      // ---------- MOON GLITTER ----------
-      // sparkles snap onto the crest line beneath them so they ride the waves
-      const ampBoost = 1 + env * 0.4;
-      for (const g of glints) {
-        g.v += dt * 0.035 * ampBoost; // run down the moon road toward the viewer
+      // ---------- SUN GLINTS ----------
+      // a dense field of fine sparkles riding the chop — the photographic sea
+      // texture. Each snaps onto the crest line beneath it; brighter & warmer
+      // near the horizon, sparse and cool in the dark foreground, and gated by
+      // the local wave face so they sit on sunlit slopes.
+      const ampBoost = 1 + env * 0.3;
+      for (const g of chop) {
+        g.v += dt * 0.025 * ampBoost; // drift toward the viewer
         g.ph += dt * g.sp;
-        if (g.v > 0.6) {
-          g.v = 0.004;
-          g.u = rand(-0.95, 0.95);
+        if (g.v > 1.0) {
+          g.v = 0.01;
+          g.u = rand(-1.08, 1.08);
         }
         const tw = Math.sin(g.ph);
-        if (tw < 0.55) continue; // sparse, sparkling
-        const near = 1 - 1.6 * Math.abs(g.u - MOON_U);
-        if (near <= 0) continue; // glitter only on the moon road
-        const x = w * (0.5 + g.u * 0.5 * (0.82 + 0.18 * g.v));
-        const amp = ampAt(g.v, ampBoost);
-        const y =
-          yH + (h - yH) * Math.pow(g.v, 1.55) + waveDisp(g.u, g.v, t) * amp;
-        const a = clamp((tw - 0.55) * 2.0 * near * (0.7 + beat * 0.6), 0, 1);
-        const s = lerp(0.7, 2.2, g.v);
-        ctx.fillStyle = rgb(MOON_CORE, a);
-        ctx.fillRect(x - s / 2, y - s / 2, s, s);
+        if (tw < 0.5) continue; // sparse, sparkling
+        const lit = seaLight(g.u, g.v);
+        if (lit < 0.06) continue;
+        const sp = spreadAt(g.v);
+        const x = w * (0.5 + g.u * sp);
+        const disp = waveDisp(g.u, g.v, t);
+        const slope = waveDisp(g.u, g.v + 0.005, t) - disp;
+        const face = clamp(-slope * 4.5, 0, 1); // sit on sun-facing slopes
+        const y = yH + (h - yH) * Math.pow(g.v, 1.55) + disp * ampAt(g.v, ampBoost);
+        const a = clamp(
+          (tw - 0.5) * 2.0 * lit * (0.35 + face * 0.65) * (0.7 + beat * 0.4),
+          0,
+          0.9
+        );
+        if (a < 0.04) continue;
+        const warmth = clamp(1 - g.v * 1.7, 0, 1);
+        ctx.fillStyle = rgb(mix(HL_COOL, HL_WARM, warmth), a);
+        const sz = lerp(0.6, 1.8, g.v);
+        ctx.fillRect(x - sz / 2, y - sz / 2, sz, sz);
       }
 
-      // ---------- horizon crisp line + haze ----------
-      const haze = ctx.createLinearGradient(0, yH - 6, 0, yH + 10);
+      // ---------- horizon haze ----------
+      // a soft warm line of haze where the sea meets the sky.
+      const haze = ctx.createLinearGradient(0, yH - 4, 0, yH + 8);
       haze.addColorStop(0, rgb(SKY_HZN, 0));
-      haze.addColorStop(0.45, rgb(MOON_CORE, 0.35 + beat * 0.15));
+      haze.addColorStop(0.4, rgb([246, 236, 216], 0.5 + beat * 0.1));
       haze.addColorStop(1, rgb(SEA_HZN, 0));
       ctx.fillStyle = haze;
-      ctx.fillRect(0, yH - 6, w, 16);
+      ctx.fillRect(0, yH - 4, w, 12);
 
       // ---------- vessels ----------
       drawSpeck();
       drawBoat(t, env);
+
+      // ---------- drone vignette ----------
+      // gently darken the corners (bottom most), the look of aerial footage.
+      ctx.save();
+      const vig = ctx.createRadialGradient(
+        w * 0.5,
+        h * 0.4,
+        h * 0.34,
+        w * 0.5,
+        h * 0.52,
+        h * 0.95
+      );
+      vig.addColorStop(0, "rgba(0,0,0,0)");
+      vig.addColorStop(1, "rgba(2,8,14,0.4)");
+      ctx.fillStyle = vig;
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
 
       raf = requestAnimationFrame(frame);
     }

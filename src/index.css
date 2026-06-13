@@ -59,11 +59,25 @@ body {
   inset: 0;
   z-index: 0;
 }
-/* warm-up the stage backdrop so any letterboxing reads as dusk, not void */
+/* daylight stage backdrop so any letterboxing reads as open sea, not void */
 .stage-ocean {
-  background:
-    radial-gradient(120% 80% at 62% 0%, rgba(50, 44, 32, 0.5), rgba(0, 0, 0, 0) 60%),
-    #060a10;
+  background: linear-gradient(
+    180deg,
+    #93a4b1 0%,
+    #c8c2a8 17%,
+    #3a5870 40%,
+    #16293a 70%,
+    #0a1622 100%
+  );
+}
+/* the heavy centre vignette suits Gargantua; the daytime sea wants a far
+   subtler one (the canvas already paints its own aerial-footage vignette) */
+.stage-ocean .vignette {
+  background: radial-gradient(
+    ellipse 92% 82% at 50% 40%,
+    rgba(0, 0, 0, 0) 58%,
+    rgba(2, 8, 14, 0.28) 100%
+  );
 }
 
 /* ---- Scene: black hole + dial stacked, nudged slightly above center ---- */
