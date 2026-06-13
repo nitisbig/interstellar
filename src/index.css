@@ -1,0 +1,363 @@
+/* ============================================================================
+   Interstellar — Gargantua visualizer
+   All reactive parts read the --env (envelope) and --beat custom properties,
+   which the render loop sets on .stage every frame.
+   ============================================================================ */
+
+:root {
+  --warm-1: 255, 226, 180;
+  --warm-2: 255, 168, 84;
+  --warm-3: 255, 138, 64;
+  --ice: 214, 224, 235;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+}
+
+body {
+  font-family: "Space Mono", "Courier New", monospace;
+  color: #cfd2d6;
+  -webkit-font-smoothing: antialiased;
+  cursor: pointer;
+  user-select: none;
+}
+
+/* ---- Stage: owns the reactive variables ---- */
+.stage {
+  --env: 0;
+  --beat: 0;
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(120% 90% at 50% 38%, rgba(28, 22, 16, 0.55), rgba(0, 0, 0, 0) 60%),
+    radial-gradient(80% 60% at 70% 80%, rgba(18, 26, 40, 0.4), rgba(0, 0, 0, 0) 70%),
+    #000;
+}
+
+.starfield {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+/* ---- Scene: black hole + dial stacked, nudged slightly above center ---- */
+.scene {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  transform: translateY(-3%);
+  z-index: 1;
+  pointer-events: none;
+}
+.scene > * {
+  grid-area: 1 / 1;
+}
+
+/* ============================================================================
+   GARGANTUA
+   ============================================================================ */
+.blackhole {
+  position: relative;
+  width: min(64vmin, 680px);
+  height: min(64vmin, 680px);
+}
+.blackhole > * {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+}
+
+/* soft warm aura behind everything (audio-reactive) */
+.bh-glow {
+  width: 90%;
+  height: 90%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(calc(1 + var(--env) * 0.5 + var(--beat) * 0.55));
+  background: radial-gradient(
+    closest-side,
+    rgba(var(--warm-1), 0.45),
+    rgba(var(--warm-2), 0.16) 45%,
+    rgba(var(--warm-3), 0.04) 70%,
+    transparent 80%
+  );
+  opacity: min(1, calc(0.34 + var(--env) * 0.5 + var(--beat) * 0.35));
+  filter: blur(6px);
+  z-index: 0;
+  will-change: transform, opacity;
+}
+
+/* the lensed Einstein ring — a bright (near) vertical ring around the core */
+.bh-halo {
+  width: 54%;
+  height: 54%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scaleX(1.03);
+  background: radial-gradient(
+    closest-side,
+    transparent 0 70%,
+    rgba(var(--warm-1), 0.85) 76%,
+    rgba(var(--warm-2), 0.55) 84%,
+    transparent 92%
+  );
+  box-shadow:
+    0 -8px 34px rgba(var(--warm-2), 0.45),
+    0 8px 34px rgba(var(--warm-3), 0.3);
+  opacity: min(1, calc(0.55 + var(--env) * 0.4 + var(--beat) * 0.5));
+  filter: blur(0.4px);
+  z-index: 2;
+  will-change: opacity;
+}
+
+/* flattened accretion-disk planes */
+.bh-disk {
+  width: 122%;
+  height: 122%;
+  transform: translate(-50%, -50%) scaleY(0.24);
+  border-radius: 50%;
+  filter: brightness(calc(1 + var(--env) * 0.7 + var(--beat) * 0.6))
+    saturate(calc(1 + var(--env) * 0.5))
+    blur(0.5px);
+  will-change: filter;
+}
+.bh-disk-back {
+  z-index: 1;
+}
+.bh-disk-front {
+  z-index: 5;
+  /* keep only the near rim, crossing in front of the lower core */
+  clip-path: polygon(0 52%, 100% 52%, 100% 100%, 0 100%);
+}
+
+.bh-spin {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  /* carve the centre out so the disk reads as a ring */
+  -webkit-mask: radial-gradient(closest-side, transparent 0 40%, #000 50%, #000 100%);
+  mask: radial-gradient(closest-side, transparent 0 40%, #000 50%, #000 100%);
+  background: conic-gradient(
+    from 0deg,
+    rgba(var(--warm-1), 0) 0deg,
+    rgba(var(--warm-2), 0.7) 38deg,
+    rgba(var(--warm-1), 0.98) 88deg,
+    rgba(var(--warm-3), 0.6) 150deg,
+    rgba(120, 72, 42, 0.14) 220deg,
+    rgba(var(--warm-2), 0.72) 300deg,
+    rgba(var(--warm-1), 0) 360deg
+  );
+  animation: bh-spin 17s linear infinite;
+  will-change: transform;
+}
+.bh-disk-front .bh-spin {
+  animation-duration: 21s;
+  animation-direction: reverse;
+}
+
+@keyframes bh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* the event horizon — pure black sphere with a faint rim */
+.bh-core {
+  width: 44%;
+  height: 44%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    closest-side,
+    #000 0 72%,
+    rgba(8, 6, 4, 1) 86%,
+    rgba(20, 14, 8, 1) 100%
+  );
+  box-shadow:
+    inset 0 0 30px 6px rgba(0, 0, 0, 0.9),
+    0 0 22px 6px rgba(0, 0, 0, 0.85);
+  z-index: 3;
+}
+
+/* photon ring hugging the horizon */
+.bh-photon {
+  width: 47%;
+  height: 47%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(
+    closest-side,
+    transparent 0 88%,
+    rgba(var(--warm-1), 0.95) 93%,
+    rgba(var(--warm-1), 0) 99%
+  );
+  opacity: min(1, calc(0.7 + var(--env) * 0.3 + var(--beat) * 0.3));
+  filter: brightness(calc(1 + var(--beat) * 0.6));
+  z-index: 4;
+  will-change: opacity, filter;
+}
+
+/* ============================================================================
+   INSTRUMENT DIAL (SVG overlay)
+   ============================================================================ */
+.dial {
+  width: min(86vmin, 900px);
+  height: min(86vmin, 900px);
+  overflow: visible;
+  z-index: 6;
+}
+
+.ring-pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(calc(1 + var(--beat) * 0.16 + var(--env) * 0.05));
+  opacity: min(1, calc(0.12 + var(--beat) * 0.6 + var(--env) * 0.18));
+  will-change: transform, opacity;
+}
+
+.ticks line {
+  opacity: min(1, calc(var(--base) + var(--env) * 0.6 + var(--beat) * 0.4));
+}
+
+.hand {
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
+}
+
+/* ---- vignette to deepen the edges ---- */
+.vignette {
+  position: fixed;
+  inset: 0;
+  z-index: 7;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at center 42%,
+    rgba(0, 0, 0, 0) 46%,
+    rgba(0, 0, 0, 0.6) 100%
+  );
+}
+
+/* ============================================================================
+   INTRO OVERLAY
+   ============================================================================ */
+.intro {
+  position: fixed;
+  inset: 0;
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  background: radial-gradient(ellipse at center, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0.82));
+  backdrop-filter: blur(1px);
+  transition: opacity 1100ms ease;
+}
+.intro.hide {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.intro-ring {
+  width: 66px;
+  height: 66px;
+  border: 1px solid rgba(var(--ice), 0.55);
+  border-radius: 50%;
+  position: relative;
+  animation: breathe 3.4s ease-in-out infinite;
+}
+.intro-ring::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  background: #eef1f4;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 16px 5px rgba(238, 241, 244, 0.7);
+}
+.intro-label {
+  letter-spacing: 0.45em;
+  text-transform: uppercase;
+  font-size: 0.74rem;
+  font-weight: 400;
+  color: rgba(var(--ice), 0.85);
+  padding-left: 0.45em;
+}
+.intro-sub {
+  font-family: "Cormorant", Georgia, serif;
+  font-style: italic;
+  letter-spacing: 0.3em;
+  font-size: 1.05rem;
+  color: rgba(var(--ice), 0.4);
+  padding-left: 0.3em;
+}
+
+@keyframes breathe {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+/* ---- status + play hint ---- */
+.status {
+  position: fixed;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  z-index: 10;
+  font-size: 0.62rem;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: rgba(var(--ice), 0.65);
+  background: rgba(0, 0, 0, 0.4);
+  padding: 8px 14px;
+  border: 1px solid rgba(var(--ice), 0.2);
+  border-radius: 2px;
+  pointer-events: none;
+}
+
+.play-hint {
+  position: fixed;
+  right: 26px;
+  bottom: 24px;
+  z-index: 8;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  font-size: 0.7rem;
+  color: rgba(var(--ice), 0.55);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(var(--ice), 0.18);
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+@media (max-width: 560px) {
+  .intro-label {
+    font-size: 0.66rem;
+  }
+}

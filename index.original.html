@@ -1,0 +1,369 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Interstellar</title>
+<style>
+  :root {
+    /* Vertical offset (as % of viewport) to align overlay with the black hole
+       in the backdrop image — the hole sits a little above center. */
+    --dial-cy: 46%;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #000;
+    cursor: pointer;
+  }
+
+  body {
+    font-family: "Helvetica Neue", Arial, sans-serif;
+    color: #cfd2d6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---- Backdrop: the reference image ---- */
+  #backdrop {
+    position: fixed;
+    inset: 0;
+    background-image: url("ChatGPT%20Image%20Jun%2010%2C%202026%2C%2009_03_38%20PM.png");
+    background-size: cover;
+    background-position: center 42%;
+    background-repeat: no-repeat;
+    background-color: #000;
+    z-index: 0;
+  }
+
+  /* ---- Animated SVG overlay, aligned over the dial / black hole ---- */
+  #stage {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    pointer-events: none;
+  }
+
+  #dial {
+    /* Size scales with the smaller viewport dimension to track the backdrop. */
+    width: min(86vmin, 880px);
+    height: min(86vmin, 880px);
+    transform: translateY(calc(var(--dial-cy) - 50%));
+    overflow: visible;
+    will-change: transform;
+  }
+
+  /* core glow element pulses via JS-set CSS vars */
+  #coreGlow   { transform-box: fill-box; transform-origin: center; will-change: transform, opacity; }
+  #ringPulse  { transform-box: fill-box; transform-origin: center; will-change: transform, opacity; }
+  #hand       { transform-box: fill-box; transform-origin: center; will-change: transform; }
+  #ticks line { transition: opacity 90ms linear; }
+
+  /* ---- Tap-to-start overlay ---- */
+  #intro {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1.4rem;
+    background: radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.78));
+    backdrop-filter: blur(1px);
+    transition: opacity 900ms ease;
+  }
+  #intro.hide { opacity: 0; pointer-events: none; }
+
+  #intro .ring {
+    width: 64px; height: 64px;
+    border: 1px solid rgba(207,210,214,0.55);
+    border-radius: 50%;
+    position: relative;
+    animation: breathe 3.2s ease-in-out infinite;
+  }
+  #intro .ring::after {
+    content: "";
+    position: absolute;
+    left: 50%; top: 50%;
+    width: 7px; height: 7px;
+    background: #eef1f4;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 14px 4px rgba(238,241,244,0.7);
+  }
+  #intro p {
+    letter-spacing: 0.42em;
+    text-transform: uppercase;
+    font-size: 0.72rem;
+    font-weight: 300;
+    color: rgba(207,210,214,0.85);
+    padding-left: 0.42em;
+  }
+  #intro .sub {
+    letter-spacing: 0.24em;
+    font-size: 0.58rem;
+    color: rgba(207,210,214,0.4);
+  }
+
+  @keyframes breathe {
+    0%, 100% { transform: scale(1);   opacity: 0.55; }
+    50%      { transform: scale(1.12); opacity: 1; }
+  }
+
+  /* faint vignette to deepen the edges */
+  #vignette {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background: radial-gradient(ellipse at center 42%, rgba(0,0,0,0) 48%, rgba(0,0,0,0.55) 100%);
+  }
+</style>
+</head>
+<body>
+  <div id="backdrop"></div>
+
+  <div id="stage">
+    <svg id="dial" viewBox="-500 -500 1000 1000" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+      <defs>
+        <radialGradient id="gCore" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0.95"/>
+          <stop offset="35%" stop-color="#e9eef3" stop-opacity="0.55"/>
+          <stop offset="70%" stop-color="#8a9099" stop-opacity="0.12"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+        </radialGradient>
+        <radialGradient id="gRing" cx="50%" cy="50%" r="50%">
+          <stop offset="0%"  stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="78%" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="88%" stop-color="#dfe4ea" stop-opacity="0.5"/>
+          <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+        </radialGradient>
+      </defs>
+
+      <!-- soft pulsing aura behind the black hole -->
+      <circle id="coreGlow" cx="0" cy="0" r="150" fill="url(#gCore)" opacity="0.5"/>
+
+      <!-- pulsing inner ring that flares on beats -->
+      <circle id="ringPulse" cx="0" cy="0" r="300" fill="none"
+              stroke="#e6eaef" stroke-width="1.4" opacity="0.18"/>
+
+      <!-- tick ring (overlaid on the backdrop's dial), shimmers with amplitude -->
+      <g id="ticks" stroke="#cfd6dd" stroke-linecap="round"></g>
+
+      <!-- rotating indicator hand -->
+      <g id="hand">
+        <line x1="0" y1="0" x2="0" y2="-378" stroke="#f2f5f8" stroke-width="2" opacity="0.85"/>
+        <circle cx="0" cy="-378" r="5" fill="#ffffff" opacity="0.9"/>
+        <circle cx="0" cy="0" r="3.5" fill="#ffffff" opacity="0.8"/>
+      </g>
+    </svg>
+  </div>
+
+  <div id="vignette"></div>
+
+  <div id="intro">
+    <div class="ring"></div>
+    <p>Tap to begin</p>
+    <span class="sub">interstellar</span>
+  </div>
+
+  <audio id="audio" src="interstellar_piano.mp3" loop preload="auto"></audio>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- DOM ----
+  const intro     = document.getElementById("intro");
+  const audioEl   = document.getElementById("audio");
+  const ticksG    = document.getElementById("ticks");
+  const hand      = document.getElementById("hand");
+  const coreGlow  = document.getElementById("coreGlow");
+  const ringPulse = document.getElementById("ringPulse");
+
+  // ---- Build the tick ring (matches the dial in the backdrop) ----
+  const TICK_COUNT = 72;          // ticks around the ring
+  const R_OUTER    = 470;
+  const tickEls    = [];
+  for (let i = 0; i < TICK_COUNT; i++) {
+    const major = (i % 6 === 0);
+    const len   = major ? 34 : 18;
+    const a     = (i / TICK_COUNT) * Math.PI * 2 - Math.PI / 2;
+    const x1 = Math.cos(a) * R_OUTER;
+    const y1 = Math.sin(a) * R_OUTER;
+    const x2 = Math.cos(a) * (R_OUTER - len);
+    const y2 = Math.sin(a) * (R_OUTER - len);
+    const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+    ln.setAttribute("x1", x1.toFixed(1));
+    ln.setAttribute("y1", y1.toFixed(1));
+    ln.setAttribute("x2", x2.toFixed(1));
+    ln.setAttribute("y2", y2.toFixed(1));
+    ln.setAttribute("stroke-width", major ? 2.2 : 1.1);
+    ln.setAttribute("opacity", major ? 0.35 : 0.18);
+    ln.dataset.base = major ? 0.35 : 0.18;
+    ticksG.appendChild(ln);
+    tickEls.push(ln);
+  }
+
+  // ---- Audio / analysis state ----
+  let audioCtx, analyser, freqData;
+  let started = false, playing = false;
+
+  // motion state
+  let handAngle   = 0;     // degrees, continuous rotation
+  let envelope    = 0;     // smoothed overall intensity (0..1)
+  let beatPulse   = 0;     // decays after each beat
+  let bassAvg     = 0;     // running average of bass energy
+  let lastBeat    = 0;
+
+  const BASS_BINS   = 8;       // low-frequency bins => "beat"/bass energy
+  const BEAT_FACTOR = 1.32;    // how far above average counts as a beat
+  const BEAT_DEBOUNCE = 230;   // ms between beats
+
+  function setupAudio() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    audioCtx  = new Ctx();
+    analyser  = audioCtx.createAnalyser();
+    analyser.fftSize = 1024;
+    analyser.smoothingTimeConstant = 0.82;
+    freqData  = new Uint8Array(analyser.frequencyBinCount);
+    const src = audioCtx.createMediaElementSource(audioEl);
+    src.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  }
+
+  function start() {
+    if (!started) {
+      setupAudio();
+      started = true;
+    }
+    if (audioCtx.state === "suspended") audioCtx.resume();
+    audioEl.volume = 1;
+    const p = audioEl.play();
+    if (p && p.catch) {
+      p.then(() => { playing = true; })
+       .catch((err) => {
+         playing = false;
+         console.error("Audio play failed:", err);
+         showStatus("Audio blocked — tap again");
+       });
+    } else {
+      playing = true;
+    }
+    intro.classList.add("hide");
+  }
+
+  // surface audio load problems instead of failing silently
+  audioEl.addEventListener("error", () => {
+    const e = audioEl.error;
+    showStatus("Audio error: " + (e ? e.code : "unknown") + " — check file path");
+  });
+
+  let statusEl;
+  function showStatus(msg) {
+    if (!statusEl) {
+      statusEl = document.createElement("div");
+      statusEl.style.cssText =
+        "position:fixed;left:50%;bottom:28px;transform:translateX(-50%);z-index:5;" +
+        "font:300 0.62rem/1 sans-serif;letter-spacing:0.2em;text-transform:uppercase;" +
+        "color:rgba(207,210,214,0.65);background:rgba(0,0,0,0.4);padding:8px 14px;" +
+        "border:1px solid rgba(207,210,214,0.2);border-radius:2px;pointer-events:none;";
+      document.body.appendChild(statusEl);
+    }
+    statusEl.textContent = msg;
+    clearTimeout(showStatus._t);
+    showStatus._t = setTimeout(() => { if (statusEl) statusEl.textContent = ""; }, 4000);
+  }
+
+  function toggle() {
+    if (!started) { start(); return; }
+    if (playing) { audioEl.pause(); playing = false; }
+    else { if (audioCtx.state === "suspended") audioCtx.resume();
+           audioEl.play(); playing = true; }
+  }
+
+  // first interaction starts; later interactions toggle play/pause
+  let firstDone = false;
+  function onTap() {
+    if (!firstDone) { firstDone = true; start(); }
+    else { toggle(); }
+  }
+  window.addEventListener("click", onTap);
+  window.addEventListener("touchstart", (e) => { e.preventDefault(); onTap(); }, { passive: false });
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "Space" || e.code === "Enter") { e.preventDefault(); onTap(); }
+  });
+
+  // ---- Render loop ----
+  let prev = performance.now();
+  function frame(now) {
+    const dt = Math.min(0.05, (now - prev) / 1000);
+    prev = now;
+
+    let level = 0, bass = 0;
+    if (analyser && playing) {
+      analyser.getByteFrequencyData(freqData);
+
+      // bass energy (low bins)
+      let bSum = 0;
+      for (let i = 1; i <= BASS_BINS; i++) bSum += freqData[i];
+      bass = bSum / (BASS_BINS * 255);
+
+      // overall level (average of spectrum)
+      let sum = 0;
+      for (let i = 0; i < freqData.length; i++) sum += freqData[i];
+      level = sum / (freqData.length * 255);
+
+      // running average of bass for adaptive beat detection
+      bassAvg = bassAvg * 0.94 + bass * 0.06;
+      if (bass > bassAvg * BEAT_FACTOR && bass > 0.06 &&
+          now - lastBeat > BEAT_DEBOUNCE) {
+        lastBeat  = now;
+        beatPulse = 1;
+      }
+    }
+
+    // envelope follower: fast attack, slow decay
+    const target = level;
+    if (target > envelope) envelope += (target - envelope) * 0.35;
+    else envelope += (target - envelope) * 0.08;
+
+    // beat pulse decay
+    beatPulse *= Math.pow(0.001, dt); // ~ exp decay, gone in a few hundred ms
+
+    // --- drive the hand: continuous + intensity-modulated speed ---
+    const baseSpeed = 14;                       // deg/sec idle
+    const speed = baseSpeed + envelope * 150 + beatPulse * 120;
+    handAngle = (handAngle + speed * dt) % 360;
+    hand.setAttribute("transform", `rotate(${handAngle.toFixed(2)})`);
+
+    // --- core glow pulse ---
+    const coreScale = 1 + envelope * 0.5 + beatPulse * 0.55;
+    const coreOpac  = 0.32 + envelope * 0.5 + beatPulse * 0.35;
+    coreGlow.setAttribute("transform", `scale(${coreScale.toFixed(3)})`);
+    coreGlow.setAttribute("opacity", Math.min(1, coreOpac).toFixed(3));
+
+    // --- inner ring flare on beats ---
+    const ringScale = 1 + beatPulse * 0.16 + envelope * 0.05;
+    const ringOpac  = 0.12 + beatPulse * 0.6 + envelope * 0.18;
+    ringPulse.setAttribute("transform", `scale(${ringScale.toFixed(3)})`);
+    ringPulse.setAttribute("opacity", Math.min(1, ringOpac).toFixed(3));
+
+    // --- tick shimmer with amplitude ---
+    const boost = envelope * 0.6 + beatPulse * 0.4;
+    for (let i = 0; i < tickEls.length; i++) {
+      const base = +tickEls[i].dataset.base;
+      tickEls[i].setAttribute("opacity", Math.min(1, base + boost).toFixed(3));
+    }
+
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
