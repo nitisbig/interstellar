@@ -5,6 +5,9 @@ import BlackHole from "./components/BlackHole.jsx";
 import Dial from "./components/Dial.jsx";
 import Intro from "./components/Intro.jsx";
 import Volume from "./components/Volume.jsx";
+import Ocean from "./components/Ocean.jsx";
+
+const SCENES = ["gargantua", "ocean"];
 
 const AUDIO_URL = `${import.meta.env.BASE_URL}interstellar_piano.mp3`;
 
@@ -13,6 +16,7 @@ export default function App() {
     useAudio(AUDIO_URL);
 
   const [started, setStarted] = useState(false);
+  const [scene, setScene] = useState("gargantua");
 
   const stageRef = useRef(null);
   const handRef = useRef(null);
@@ -100,14 +104,24 @@ export default function App() {
     return () => cancelAnimationFrame(raf);
   }, [sample]);
 
-  return (
-    <div className="stage" ref={stageRef}>
-      <Starfield motionRef={motionRef} />
+  const isOcean = scene === "ocean";
 
-      <div className="scene">
-        <BlackHole />
-        <Dial ref={handRef} />
-      </div>
+  return (
+    <div
+      className={`stage${isOcean ? " stage-ocean" : ""}`}
+      ref={stageRef}
+    >
+      {isOcean ? (
+        <Ocean motionRef={motionRef} />
+      ) : (
+        <>
+          <Starfield motionRef={motionRef} />
+          <div className="scene">
+            <BlackHole />
+            <Dial ref={handRef} />
+          </div>
+        </>
+      )}
 
       <div className="vignette" />
       <Intro hidden={started} />
@@ -124,6 +138,24 @@ export default function App() {
           >
             {playing ? "❚❚" : "▶"}
           </button>
+
+          {/* scene switcher — flips between Gargantua and the ocean */}
+          <nav className="scene-switch" data-no-toggle>
+            {SCENES.map((id) => (
+              <button
+                key={id}
+                className={`scene-dot${scene === id ? " on" : ""}`}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setScene(id);
+                }}
+                aria-label={id}
+                aria-pressed={scene === id}
+              >
+                <span>{id === "ocean" ? "Ocean" : "Gargantua"}</span>
+              </button>
+            ))}
+          </nav>
         </>
       ) : null}
     </div>

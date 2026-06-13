@@ -53,6 +53,19 @@ body {
   z-index: 0;
 }
 
+/* ---- Ocean scene ---- */
+.ocean {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+/* warm-up the stage backdrop so any letterboxing reads as dusk, not void */
+.stage-ocean {
+  background:
+    radial-gradient(120% 80% at 62% 0%, rgba(50, 44, 32, 0.5), rgba(0, 0, 0, 0) 60%),
+    #060a10;
+}
+
 /* ---- Scene: black hole + dial stacked, nudged slightly above center ---- */
 .scene {
   position: fixed;
@@ -421,8 +434,57 @@ body {
   box-shadow: 0 0 10px 2px rgba(238, 241, 244, 0.5);
 }
 
+/* ---- scene switcher (bottom-centre, above the status line) ---- */
+.scene-switch {
+  position: fixed;
+  left: 50%;
+  bottom: 64px;
+  transform: translateX(-50%);
+  z-index: 9;
+  display: flex;
+  gap: 10px;
+  padding: 6px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(var(--ice), 0.14);
+  backdrop-filter: blur(6px);
+}
+
+.scene-dot {
+  display: grid;
+  place-items: center;
+  padding: 7px 16px;
+  font-family: "Space Mono", monospace;
+  font-size: 0.56rem;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: rgba(var(--ice), 0.5);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.4s ease, background 0.4s ease, letter-spacing 0.4s ease;
+}
+.scene-dot span {
+  padding-left: 0.26em; /* optical centring of the tracked text */
+}
+.scene-dot:hover {
+  color: rgba(var(--ice), 0.85);
+}
+.scene-dot.on {
+  color: #0a0c10;
+  background: rgba(var(--ice), 0.9);
+  letter-spacing: 0.3em;
+  box-shadow: 0 0 18px rgba(var(--ice), 0.25);
+}
+
 @media (max-width: 560px) {
   .intro-label {
     font-size: 0.66rem;
+  }
+  .scene-dot {
+    padding: 6px 12px;
+    font-size: 0.5rem;
+    letter-spacing: 0.18em;
   }
 }
