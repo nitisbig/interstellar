@@ -11,8 +11,10 @@ import { useCallback, useRef, useState } from "react";
 export function useAudio(srcUrl) {
   const [playing, setPlaying] = useState(false);
   const [status, setStatus] = useState("");
+  const [volume, setVolumeState] = useState(0.8);
 
   const audioElRef = useRef(null);
+  const volumeRef = useRef(0.8); // mirrors `volume` for use inside callbacks
   const ctxRef = useRef(null);
   const analyserRef = useRef(null);
   const freqRef = useRef(null);
@@ -62,7 +64,7 @@ export function useAudio(srcUrl) {
     const ctx = ctxRef.current;
     const el = audioElRef.current;
     if (ctx.state === "suspended") ctx.resume();
-    el.volume = 1;
+    el.volume = volumeRef.current;
     const p = el.play();
     if (p && p.catch) {
       p.then(() => setPlaying(true)).catch((err) => {
@@ -90,6 +92,14 @@ export function useAudio(srcUrl) {
       setPlaying(true);
     }
   }, [play]);
+
+  /** Set output volume (0..1). Applies immediately to the live audio element. */
+  const setVolume = useCallback((v) => {
+    const vol = Math.min(1, Math.max(0, v));
+    volumeRef.current = vol;
+    setVolumeState(vol);
+    if (audioElRef.current) audioElRef.current.volume = vol;
+  }, []);
 
   /**
    * Sample the analyser and advance the smoothed motion state.
@@ -135,5 +145,5 @@ export function useAudio(srcUrl) {
     return { envelope: s.envelope, beat: s.beat, level, bass };
   }, []);
 
-  return { playing, status, play, toggle, sample };
+  return { playing, status, volume, play, toggle, setVolume, sample };
 }

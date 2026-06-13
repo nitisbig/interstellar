@@ -4,11 +4,13 @@ import Starfield from "./components/Starfield.jsx";
 import BlackHole from "./components/BlackHole.jsx";
 import Dial from "./components/Dial.jsx";
 import Intro from "./components/Intro.jsx";
+import Volume from "./components/Volume.jsx";
 
 const AUDIO_URL = `${import.meta.env.BASE_URL}interstellar_piano.mp3`;
 
 export default function App() {
-  const { playing, status, play, toggle, sample } = useAudio(AUDIO_URL);
+  const { playing, status, volume, play, toggle, setVolume, sample } =
+    useAudio(AUDIO_URL);
 
   const [started, setStarted] = useState(false);
 
@@ -21,7 +23,12 @@ export default function App() {
   playingRef.current = playing;
 
   // --- input: first gesture starts, later gestures toggle play/pause ---
+  // Interactions inside a [data-no-toggle] region (the volume control) are
+  // ignored here so adjusting volume never pauses the track.
   useEffect(() => {
+    const fromControl = (node) =>
+      !!(node && node.closest && node.closest("[data-no-toggle]"));
+
     const onTap = () => {
       if (!firstDoneRef.current) {
         firstDoneRef.current = true;
@@ -31,21 +38,27 @@ export default function App() {
         toggle();
       }
     };
+    const onClick = (e) => {
+      if (fromControl(e.target)) return;
+      onTap();
+    };
     const onKey = (e) => {
       if (e.code === "Space" || e.code === "Enter") {
+        if (fromControl(document.activeElement)) return;
         e.preventDefault();
         onTap();
       }
     };
     const onTouch = (e) => {
+      if (fromControl(e.target)) return; // let the slider receive the touch
       e.preventDefault();
       onTap();
     };
-    window.addEventListener("click", onTap);
+    window.addEventListener("click", onClick);
     window.addEventListener("touchstart", onTouch, { passive: false });
     window.addEventListener("keydown", onKey);
     return () => {
-      window.removeEventListener("click", onTap);
+      window.removeEventListener("click", onClick);
       window.removeEventListener("touchstart", onTouch);
       window.removeEventListener("keydown", onKey);
     };
@@ -102,13 +115,16 @@ export default function App() {
       {status ? <div className="status">{status}</div> : null}
 
       {started ? (
-        <button
-          className="play-hint"
-          aria-label={playing ? "Pause" : "Play"}
-          tabIndex={-1}
-        >
-          {playing ? "❚❚" : "▶"}
-        </button>
+        <>
+          <Volume volume={volume} setVolume={setVolume} />
+          <button
+            className="play-hint"
+            aria-label={playing ? "Pause" : "Play"}
+            tabIndex={-1}
+          >
+            {playing ? "❚❚" : "▶"}
+          </button>
+        </>
       ) : null}
     </div>
   );

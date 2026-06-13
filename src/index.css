@@ -219,22 +219,16 @@ body {
   z-index: 6;
 }
 
-.ring-pulse {
-  transform-box: fill-box;
-  transform-origin: center;
-  transform: scale(calc(1 + var(--beat) * 0.16 + var(--env) * 0.05));
-  opacity: min(1, calc(0.12 + var(--beat) * 0.6 + var(--env) * 0.18));
-  will-change: transform, opacity;
-}
-
 .ticks line {
-  opacity: min(1, calc(var(--base) + var(--env) * 0.6 + var(--beat) * 0.4));
+  opacity: min(1, calc(var(--base) + var(--env) * 0.55 + var(--beat) * 0.35));
 }
 
 .hand {
   transform-box: fill-box;
   transform-origin: center;
-  will-change: transform;
+  opacity: min(1, calc(0.7 + var(--env) * 0.3 + var(--beat) * 0.3));
+  filter: drop-shadow(0 0 5px rgba(238, 241, 244, 0.55));
+  will-change: transform, opacity;
 }
 
 /* ---- vignette to deepen the edges ---- */
@@ -354,6 +348,77 @@ body {
   border-radius: 50%;
   pointer-events: none;
   opacity: 0.7;
+}
+
+/* ---- minimal volume control (bottom-left) ---- */
+.volume {
+  position: fixed;
+  left: 26px;
+  bottom: 24px;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  opacity: 0.45;
+  transition: opacity 0.55s ease;
+}
+.volume:hover,
+.volume:focus-within {
+  opacity: 1;
+}
+
+.volume-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background: none;
+  border: 0;
+  color: rgba(var(--ice), 0.85);
+  cursor: pointer;
+}
+.volume-icon svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+
+.volume-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 96px;
+  height: 2px;
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+  background: linear-gradient(
+    90deg,
+    rgba(var(--ice), 0.85) 0 var(--pct, 80%),
+    rgba(var(--ice), 0.16) var(--pct, 80%) 100%
+  );
+}
+.volume-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #eef1f4;
+  box-shadow: 0 0 10px 2px rgba(238, 241, 244, 0.5);
+  transition: box-shadow 0.2s ease;
+}
+.volume-slider:hover::-webkit-slider-thumb,
+.volume-slider:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 14px 3px rgba(238, 241, 244, 0.75);
+}
+.volume-slider::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border: 0;
+  border-radius: 50%;
+  background: #eef1f4;
+  box-shadow: 0 0 10px 2px rgba(238, 241, 244, 0.5);
 }
 
 @media (max-width: 560px) {
