@@ -58,11 +58,15 @@ export default function Ocean({ motionRef }) {
     const rgb = (c, a = 1) =>
       `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
-    // ---- palette (golden hour) -------------------------------------------
-    const SKY_TOP = [58, 74, 92];
-    const SKY_MID = [150, 150, 146];
-    const SKY_HZN = [243, 232, 200];
-    const SUN_CORE = [255, 246, 220];
+    // ---- palette (surreal dusk) ------------------------------------------
+    // a deep violet zenith eases down through dusty mauve to a warm peach
+    // glow at the waterline — dreamlike rather than literal golden hour.
+    const SKY_TOP = [20, 17, 46]; // deep indigo zenith
+    const SKY_HIGH = [58, 43, 95]; // violet
+    const SKY_MID = [150, 120, 150]; // dusty mauve band
+    const SKY_HZN = [248, 226, 198]; // warm peach at the horizon
+    const SUN_CORE = [255, 248, 226];
+    const PLANET = [156, 146, 196]; // pale violet world rising on the horizon
 
     const SEA_HZN = [183, 176, 146]; // warm, hazy far water
     const SEA_MID = [70, 86, 96];
@@ -74,6 +78,8 @@ export default function Ocean({ motionRef }) {
 
     // ---- sun glitter (sparkles riding the sun road) ----------------------
     let glints = [];
+    let stars = []; // faint sky stars, twinkling above the horizon
+    let mist = []; // slow fog banks drifting across the sea
 
     function build() {
       glints = [];
@@ -83,6 +89,34 @@ export default function Ocean({ motionRef }) {
           v: rand(0.004, 0.5), // strung down the sun road toward the viewer
           ph: rand(0, Math.PI * 2),
           sp: rand(2.5, 6),
+        });
+      }
+
+      // scatter faint stars across the dusk sky (denser toward the zenith,
+      // thinning out near the bright horizon glow where they'd wash out)
+      stars = [];
+      const NSTARS = 220;
+      for (let i = 0; i < NSTARS; i++) {
+        const sy = Math.pow(Math.random(), 1.5); // bias upward
+        stars.push({
+          x: Math.random(),
+          y: sy * 0.9, // fraction of the sky band (0 top → 1 horizon)
+          r: rand(0.3, 1.2),
+          ph: rand(0, Math.PI * 2),
+          sp: rand(0.6, 2.2),
+          warm: Math.random() < 0.25, // a few amber stars among the cool ones
+        });
+      }
+
+      // a handful of slow, soft fog banks that drift sideways over the water
+      mist = [];
+      for (let i = 0; i < 5; i++) {
+        mist.push({
+          v: rand(0.04, 0.34), // depth band it hangs in
+          x: rand(0, 1),
+          sp: rand(0.004, 0.012) * (Math.random() < 0.5 ? 1 : -1),
+          width: rand(0.35, 0.7),
+          a: rand(0.05, 0.13),
         });
       }
     }
@@ -144,22 +178,24 @@ export default function Ocean({ motionRef }) {
     }
 
     // ---- the boat ---------------------------------------------------------
-    // wanders slowly within a bounded patch so it "floats around" the sea.
-    const boat = { u: SUN_U + 0.28, v: 0.42 };
+    // sits almost still in a calm patch of water and breathes with the swell.
+    const boat = { u: SUN_U + 0.3, v: 0.44 };
 
     function drawBoat(time, env, beat) {
-      // gentle drift + depth wander
-      const bu = boat.u + Math.sin(time * 0.06) * 0.16 + Math.sin(time * 0.017) * 0.05;
-      const bv = boat.v + Math.sin(time * 0.043 + 1.2) * 0.05;
+      // barely-there drift — a long, slow wander that keeps the boat steady in
+      // frame rather than skating across the sea.
+      const bu = boat.u + Math.sin(time * 0.025) * 0.05 + Math.sin(time * 0.011) * 0.02;
+      const bv = boat.v + Math.sin(time * 0.019 + 1.2) * 0.015;
       const [bx, byBase] = project(bu, bv);
 
-      // bob on the actual surface height beneath the hull + a small beat kick
+      // calm float: ride the surface height beneath the hull with a gentle
+      // damped bob. No beat-kick — the music swells the sea, not the boat.
       const swell = waveDisp(bu, bv, time);
-      const bob = swell * ampAt(bv, 1 + env * 0.6) + beat * 5 * (1 + env);
+      const bob = swell * ampAt(bv, 0.7 + env * 0.25);
       const by = byBase + bob;
-      // roll into the local slope of the swell (finite difference along v)
+      // roll softly into the local slope of the swell, plus a slow idle sway
       const slope = waveDisp(bu, bv + 0.012, time) - swell;
-      const roll = Math.sin(time * 0.9) * 0.04 + slope * 6;
+      const roll = Math.sin(time * 0.45) * 0.022 + slope * 3.2;
       const s = lerp(0.95, 1.95, bv); // perspective scale
 
       // ---- broken reflection on the water, just below the hull ----
@@ -249,12 +285,58 @@ export default function Ocean({ motionRef }) {
       const beat = m.beat;
 
       // ---------- SKY ----------
+      // a four-stop dusk ramp: indigo zenith → violet → dusty mauve → peach
       const sky = ctx.createLinearGradient(0, 0, 0, yH + 4);
       sky.addColorStop(0, rgb(SKY_TOP));
-      sky.addColorStop(0.62, rgb(mix(SKY_TOP, SKY_MID, 0.85)));
+      sky.addColorStop(0.4, rgb(SKY_HIGH));
+      sky.addColorStop(0.74, rgb(SKY_MID));
       sky.addColorStop(1, rgb(SKY_HZN));
       ctx.fillStyle = sky;
       ctx.fillRect(0, 0, w, yH + 4);
+
+      // ---------- STARS ----------
+      // twinkle softly in the upper sky, fading out toward the bright horizon
+      for (const st of stars) {
+        const sy = st.y * yH;
+        const fadeUp = clamp(1 - st.y * 0.85, 0, 1); // dimmer near the glow
+        const tw = 0.45 + 0.55 * Math.sin(t * st.sp + st.ph);
+        const a = clamp(tw * fadeUp * (0.5 + env * 0.5), 0, 1) * 0.9;
+        if (a < 0.02) continue;
+        ctx.fillStyle = rgb(st.warm ? SKY_HZN : [222, 226, 255], a);
+        ctx.fillRect(st.x * w, sy, st.r, st.r);
+      }
+
+      // ---------- RISING PLANET ----------
+      // a great pale violet world hangs just above the horizon, a touch off the
+      // sun, lifting the scene out of the ordinary. It breathes faintly.
+      const plX = w * (0.5 - 0.34 * 0.5);
+      const plR = h * (0.17 + env * 0.012);
+      const plY = yH - plR * 0.36; // mostly above the waterline, base submerged
+      const planetGrad = ctx.createRadialGradient(
+        plX - plR * 0.35, plY - plR * 0.35, plR * 0.1,
+        plX, plY, plR
+      );
+      planetGrad.addColorStop(0, rgb(mix(PLANET, [255, 252, 240], 0.5), 0.95));
+      planetGrad.addColorStop(0.55, rgb(PLANET, 0.85));
+      planetGrad.addColorStop(1, rgb(mix(PLANET, SKY_HIGH, 0.7), 0.7));
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(plX, plY, plR, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.fillStyle = planetGrad;
+      ctx.fillRect(plX - plR, plY - plR, plR * 2, plR * 2);
+      // a couple of faint banded clouds for a gas-giant feel
+      ctx.globalAlpha = 0.12;
+      ctx.fillStyle = rgb(mix(PLANET, SKY_TOP, 0.5));
+      ctx.fillRect(plX - plR, plY - plR * 0.18, plR * 2, plR * 0.12);
+      ctx.fillRect(plX - plR, plY + plR * 0.22, plR * 2, plR * 0.16);
+      ctx.restore();
+      // soft atmospheric halo around the rim
+      const halo = ctx.createRadialGradient(plX, plY, plR * 0.92, plX, plY, plR * 1.3);
+      halo.addColorStop(0, rgb(mix(PLANET, [255, 240, 230], 0.4), 0.28));
+      halo.addColorStop(1, rgb(PLANET, 0));
+      ctx.fillStyle = halo;
+      ctx.fillRect(plX - plR * 1.4, plY - plR * 1.4, plR * 2.8, plR * 2.8);
 
       // broad warm sun-glow blooming over the horizon (breathes with audio)
       const sunX = w * (0.5 + SUN_U * 0.5);
@@ -389,6 +471,24 @@ export default function Ocean({ motionRef }) {
         const s = lerp(0.8, 2.4, g.v);
         ctx.fillStyle = rgb(SUN_CORE, a);
         ctx.fillRect(x - s / 2, y - s / 2, s, s);
+      }
+
+      // ---------- DRIFTING MIST ----------
+      // soft horizontal fog banks slide across the sea, thickening the dream.
+      for (const f of mist) {
+        f.x += dt * f.sp;
+        if (f.x > 1.3) f.x = -0.3;
+        if (f.x < -0.3) f.x = 1.3;
+        const fy = yH + (h - yH) * Math.pow(f.v, 1.55);
+        const fh = lerp(6, 30, f.v);
+        const cx = f.x * w;
+        const fw = f.width * w;
+        const band = ctx.createLinearGradient(cx - fw, 0, cx + fw, 0);
+        band.addColorStop(0, rgb(SKY_HZN, 0));
+        band.addColorStop(0.5, rgb(mix(SKY_HZN, [255, 255, 255], 0.3), f.a * (0.7 + env * 0.5)));
+        band.addColorStop(1, rgb(SKY_HZN, 0));
+        ctx.fillStyle = band;
+        ctx.fillRect(cx - fw, fy - fh * 0.5, fw * 2, fh);
       }
 
       // ---------- horizon crisp line + haze ----------
