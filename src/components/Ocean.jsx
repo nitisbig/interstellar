@@ -30,7 +30,7 @@ export default function Ocean({ motionRef }) {
     // ---- composition constants -------------------------------------------
     const HORIZON = 0.22; // fraction of height where sea meets sky (high, so the
     //                       open water dominates — the aerial drone framing)
-    const SUN_U = 0.34; // sun sits a touch right of centre (matches reference)
+    const SUN_U = 0.06; // sun centred on the horizon
     const RIPPLES = 320;
     const GLITTER = 150;
 
@@ -129,7 +129,7 @@ export default function Ocean({ motionRef }) {
 
     // ---- the boat ---------------------------------------------------------
     // wanders slowly within a bounded patch so it "floats around" the sea.
-    const boat = { u: SUN_U + 0.04, v: 0.4 };
+    const boat = { u: SUN_U + 0.28, v: 0.42 };
 
     function drawBoat(time, env, beat) {
       // gentle drift + depth wander
@@ -142,7 +142,7 @@ export default function Ocean({ motionRef }) {
       const bob = swell * 4 + Math.sin(time * 1.6) * 2 + beat * 5 * (1 + env);
       const by = byBase + bob;
       const roll = (Math.sin(time * 0.9) * 0.05 + swell * 0.04);
-      const s = lerp(0.5, 1.25, bv); // perspective scale (still small/distant)
+      const s = lerp(0.95, 1.95, bv); // perspective scale
 
       // ---- broken reflection on the water, just below the hull ----
       ctx.save();
