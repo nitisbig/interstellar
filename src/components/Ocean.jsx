@@ -62,24 +62,24 @@ export default function Ocean({ motionRef }) {
     const rgb = (c, a = 1) =>
       `rgba(${c[0] | 0},${c[1] | 0},${c[2] | 0},${a})`;
 
-    // ---- palette (just after sunset — the sun is down) -------------------
-    // SKY: a dark dusk blue overhead easing down to a thin, dim warm afterglow
-    // right at the waterline. No sun, no objects — only the last of the light.
-    const SKY_TOP = [14, 22, 38]; // deep dusk blue (top of frame)
-    const SKY_MID = [30, 42, 62]; // muted dusk blue
-    const SKY_HZN = [150, 122, 100]; // dim warm afterglow at the horizon
-    const SUN_WARM = [206, 162, 128]; // the last residual glow, low and faint
+    // ---- palette (dusk — a brighter after-sunset, ~70% light) ------------
+    // SKY: a soft dusk blue overhead easing down to a warm afterglow band at
+    // the waterline. No sun, no objects — just the residual glow.
+    const SKY_TOP = [34, 48, 72]; // dusk blue (top of frame)
+    const SKY_MID = [58, 76, 104]; // muted dusk blue
+    const SKY_HZN = [196, 162, 132]; // warm afterglow at the horizon
+    const SUN_WARM = [236, 192, 150]; // the residual sun glow, low on the sky
 
-    // SEA: a dim hazy steel near the horizon (reflecting the fading sky) →
-    // dusk blue → near-black navy in the foreground.
-    const SEA_HZN = [60, 78, 96]; // dim hazy far water
-    const SEA_MID = [26, 48, 68];
-    const SEA_DEEP = [6, 16, 28]; // near-black navy foreground
+    // SEA: a hazy steel near the horizon (reflecting the fading sky) → dusk
+    // blue → deep navy in the foreground.
+    const SEA_HZN = [92, 116, 138]; // hazy far water
+    const SEA_MID = [40, 70, 96];
+    const SEA_DEEP = [12, 26, 40]; // deep navy foreground
 
-    // crest / glint colours — a dim warm glint near the horizon cooling to a
-    // faint steel toward the viewer (no bright sun to throw hard sparkle).
-    const HL_WARM = [214, 196, 172]; // dim warm glint near the horizon
-    const HL_COOL = [110, 140, 160]; // cool steel glint mid-water
+    // crest / glint colours — a warm glint near the horizon cooling to steel
+    // toward the viewer.
+    const HL_WARM = [240, 224, 198]; // warm glint near the horizon
+    const HL_COOL = [140, 172, 192]; // cool steel glint mid-water
 
     // ---- chop glints (sun sparkles riding the wavelets) ------------------
     let chop = []; // dense fine flecks across the whole sea
@@ -193,7 +193,7 @@ export default function Ocean({ motionRef }) {
         const ry = by + (3 + i * 2.6) * s;
         const fade = (1 - i / 6) * 0.18;
         const jitter = Math.sin(time * 2.2 + i * 1.3 + bx) * 1.8 * s;
-        ctx.fillStyle = rgb([196, 200, 202], fade * (0.6 + 0.4 * Math.sin(time * 3 + i)));
+        ctx.fillStyle = rgb([216, 220, 222], fade * (0.6 + 0.4 * Math.sin(time * 3 + i)));
         ctx.fillRect(bx - 4 * s + jitter, ry, 8 * s, 1.0 * s);
       }
       ctx.restore();
@@ -216,7 +216,7 @@ export default function Ocean({ motionRef }) {
       ctx.fill();
 
       // sunlit waterline along the top edge of the hull
-      ctx.strokeStyle = "rgba(196,194,186,0.4)";
+      ctx.strokeStyle = "rgba(218,214,204,0.46)";
       ctx.lineWidth = 0.5;
       ctx.beginPath();
       ctx.moveTo(-10.6, -0.1);
@@ -234,8 +234,8 @@ export default function Ocean({ motionRef }) {
       // mainsail — a tall sail behind the mast, catching the dim afterglow on
       // its left (horizon-facing) edge and falling to dusk-grey on the right
       const main = ctx.createLinearGradient(-6, -30, 10, -3);
-      main.addColorStop(0, "rgba(214,210,200,0.97)");
-      main.addColorStop(1, "rgba(150,160,170,0.9)");
+      main.addColorStop(0, "rgba(234,230,218,0.97)");
+      main.addColorStop(1, "rgba(174,184,194,0.9)");
       ctx.fillStyle = main;
       ctx.beginPath();
       ctx.moveTo(2, -33);
@@ -246,8 +246,8 @@ export default function Ocean({ motionRef }) {
 
       // jib (foresail) — a smaller sail ahead of the mast
       const jib = ctx.createLinearGradient(-9, -28, 1, -3);
-      jib.addColorStop(0, "rgba(206,204,196,0.95)");
-      jib.addColorStop(1, "rgba(140,152,164,0.88)");
+      jib.addColorStop(0, "rgba(226,222,212,0.95)");
+      jib.addColorStop(1, "rgba(164,176,188,0.88)");
       ctx.fillStyle = jib;
       ctx.beginPath();
       ctx.moveTo(1, -30);
@@ -310,12 +310,12 @@ export default function Ocean({ motionRef }) {
       // the last residual glow — low, dim and hugging the horizon (sun is down)
       ctx.save();
       ctx.globalCompositeOperation = "lighter";
-      const sun = ctx.createRadialGradient(sunX, yH, 0, sunX, yH, w * 0.3);
-      sun.addColorStop(0, rgb(SUN_WARM, clamp(0.18 + env * 0.06, 0, 0.32)));
-      sun.addColorStop(0.5, rgb(SUN_WARM, 0.05));
+      const sun = ctx.createRadialGradient(sunX, yH, 0, sunX, yH, w * 0.34);
+      sun.addColorStop(0, rgb(SUN_WARM, clamp(0.27 + env * 0.08, 0, 0.42)));
+      sun.addColorStop(0.5, rgb(SUN_WARM, 0.08));
       sun.addColorStop(1, rgb(SUN_WARM, 0));
       ctx.fillStyle = sun;
-      ctx.fillRect(0, 0, w, yH + 20);
+      ctx.fillRect(0, 0, w, yH + 26);
       ctx.restore();
 
       // ---------- WATER base ----------
@@ -335,13 +335,13 @@ export default function Ocean({ motionRef }) {
       ctx.globalCompositeOperation = "lighter";
       const bandH = (h - yH) * 0.22;
       const band = ctx.createLinearGradient(0, yH, 0, yH + bandH);
-      band.addColorStop(0, rgb([116, 122, 126], 0.13));
-      band.addColorStop(0.4, rgb([86, 104, 120], 0.05));
-      band.addColorStop(1, rgb([86, 104, 120], 0));
+      band.addColorStop(0, rgb([152, 160, 166], 0.18));
+      band.addColorStop(0.4, rgb([110, 128, 144], 0.07));
+      band.addColorStop(1, rgb([110, 128, 144], 0));
       ctx.fillStyle = band;
       ctx.fillRect(0, yH, w, bandH);
       const refl = ctx.createRadialGradient(sunX, yH, 0, sunX, yH, w * 0.4);
-      refl.addColorStop(0, rgb(SUN_WARM, 0.1 + env * 0.04));
+      refl.addColorStop(0, rgb(SUN_WARM, 0.15 + env * 0.05));
       refl.addColorStop(1, rgb(SUN_WARM, 0));
       ctx.fillStyle = refl;
       ctx.fillRect(0, yH, w, bandH * 1.4);
@@ -412,7 +412,7 @@ export default function Ocean({ motionRef }) {
           // up-face (slope<0 means crest rises toward viewer) catches light
           const face = clamp(-hlArr[row + cx] * 3.2, 0, 1);
           const lit = seaLight(u, v);
-          const a = clamp(face * lit * (0.32 + env * 0.32), 0, 0.5);
+          const a = clamp(face * lit * (0.42 + env * 0.34), 0, 0.62);
           if (a > 0.04) {
             // warm sun-white near the horizon, cooling to steel toward viewer
             const warmth = clamp(1 - v * 1.7, 0, 1);
@@ -457,9 +457,9 @@ export default function Ocean({ motionRef }) {
         const face = clamp(-slope * 4.5, 0, 1); // sit on sun-facing slopes
         const y = yH + (h - yH) * Math.pow(g.v, 1.55) + disp * ampAt(g.v, ampBoost);
         const a = clamp(
-          (tw - 0.5) * 1.6 * lit * (0.3 + face * 0.6) * (0.55 + beat * 0.35),
+          (tw - 0.5) * 1.9 * lit * (0.4 + face * 0.6) * (0.6 + beat * 0.35),
           0,
-          0.55
+          0.7
         );
         if (a < 0.04) continue;
         const warmth = clamp(1 - g.v * 1.7, 0, 1);
@@ -472,7 +472,7 @@ export default function Ocean({ motionRef }) {
       // a soft warm line of haze where the sea meets the sky.
       const haze = ctx.createLinearGradient(0, yH - 4, 0, yH + 8);
       haze.addColorStop(0, rgb(SKY_HZN, 0));
-      haze.addColorStop(0.4, rgb([198, 166, 138], 0.3 + beat * 0.08));
+      haze.addColorStop(0.4, rgb([220, 186, 156], 0.4 + beat * 0.08));
       haze.addColorStop(1, rgb(SEA_HZN, 0));
       ctx.fillStyle = haze;
       ctx.fillRect(0, yH - 4, w, 12);
@@ -493,7 +493,7 @@ export default function Ocean({ motionRef }) {
         h * 0.95
       );
       vig.addColorStop(0, "rgba(0,0,0,0)");
-      vig.addColorStop(1, "rgba(1,5,10,0.5)");
+      vig.addColorStop(1, "rgba(2,8,14,0.4)");
       ctx.fillStyle = vig;
       ctx.fillRect(0, 0, w, h);
       ctx.restore();

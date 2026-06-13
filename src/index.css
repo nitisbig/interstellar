@@ -63,11 +63,11 @@ body {
 .stage-ocean {
   background: linear-gradient(
     180deg,
-    #0e1626 0%,
-    #4a3c34 16%,
-    #2a3f52 38%,
-    #122433 70%,
-    #060f1a 100%
+    #1c2a40 0%,
+    #6a5446 16%,
+    #3a5570 38%,
+    #1a3145 70%,
+    #0a1626 100%
   );
 }
 /* the heavy centre vignette suits Gargantua; the daytime sea wants a far
