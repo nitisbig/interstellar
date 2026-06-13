@@ -31,8 +31,16 @@ export default function Ocean({ motionRef }) {
     const HORIZON = 0.22; // fraction of height where sea meets sky (high, so the
     //                       open water dominates — the aerial drone framing)
     const SUN_U = 0.06; // sun centred on the horizon
-    const RIPPLES = 320;
     const GLITTER = 150;
+
+    // The sea is rendered as a deck of travelling wave ribbons stacked from the
+    // horizon toward the viewer and painted back-to-front, so a near crest
+    // genuinely hides the trough behind it (true swell, not flat shimmer).
+    let NROWS = 110; // depth rows (recomputed on resize)
+    let COLS = 180; // horizontal samples per row
+    let xArr = new Float32Array(COLS); // screen x for each column
+    let topArr = new Float32Array(NROWS * COLS); // crest-line y per (row,col)
+    let hlArr = new Float32Array(NROWS * COLS); // crest-highlight alpha
 
     // ---- tiny helpers -----------------------------------------------------
     const rand = (a, b) => a + Math.random() * (b - a);
@@ -64,25 +72,15 @@ export default function Ocean({ motionRef }) {
     const HL_COOL = [120, 142, 156]; // mid crest
     const HL_DARK = [26, 42, 54]; // foreground crest (barely lit)
 
-    // ---- field of ripple facets ------------------------------------------
-    let ripples = [];
+    // ---- sun glitter (sparkles riding the sun road) ----------------------
     let glints = [];
 
     function build() {
-      ripples = [];
-      for (let i = 0; i < RIPPLES; i++) {
-        ripples.push({
-          u: rand(-1.12, 1.12),
-          v: Math.random(),
-          ph: rand(0, Math.PI * 2),
-          sp: rand(0.5, 1), // twinkle rate
-        });
-      }
       glints = [];
       for (let i = 0; i < GLITTER; i++) {
         glints.push({
           u: rand(-0.95, 0.95),
-          v: rand(0.004, 0.22), // clustered near the horizon
+          v: rand(0.004, 0.5), // strung down the sun road toward the viewer
           ph: rand(0, Math.PI * 2),
           sp: rand(2.5, 6),
         });
@@ -99,6 +97,14 @@ export default function Ocean({ motionRef }) {
       canvas.style.width = w + "px";
       canvas.style.height = h + "px";
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+      // scale the wave mesh to the viewport (denser on big screens, cheaper on
+      // small ones) and (re)allocate the per-vertex buffers.
+      COLS = clamp(Math.round(w / 9), 90, 240);
+      NROWS = clamp(Math.round((h - yH) / 7), 70, 170);
+      xArr = new Float32Array(COLS);
+      topArr = new Float32Array(NROWS * COLS);
+      hlArr = new Float32Array(NROWS * COLS);
       build();
     }
 
@@ -111,20 +117,30 @@ export default function Ocean({ motionRef }) {
       return [x, y];
     }
 
-    // coherent travelling-wave field → roughly -1..1, used to gather ripple
-    // highlights onto moving crests so the sea reads as swell, not static fuzz.
-    function crest(u, v, time) {
-      const a = Math.sin(u * 3.0 + v * 8.5 - time * 0.55);
-      const b = Math.sin(-u * 2.1 + v * 16.0 - time * 0.95 + 1.7);
-      const c = Math.sin(u * 5.4 + v * 26.0 - time * 1.5 + 4.1);
-      return a * 0.5 + b * 0.32 + c * 0.22;
+    // Surface height field, normalised to roughly -1..1. Four sine trains of
+    // differing wavelength and heading sum into irregular swell; every train's
+    // phase advances with time so the crests roll toward the viewer (increasing
+    // v). This is the single source of truth for the wave shape — the mesh, the
+    // crest sheen, the glitter and the boat's bob all read from it.
+    function waveDisp(u, v, time) {
+      const a = Math.sin(v * 18.0 - time * 1.0 + u * 1.1);
+      const b = Math.sin(v * 34.0 - time * 1.7 - u * 2.0 + 1.3);
+      const c = Math.sin(v * 61.0 - time * 2.5 + u * 3.3 + 4.0);
+      const d = Math.sin(v * 104.0 - time * 3.3 - u * 4.6 + 2.1);
+      return a * 0.46 + b * 0.3 + c * 0.15 + d * 0.09;
+    }
+
+    // vertical wave amplitude in screen px at depth v — tiny at the compressed
+    // horizon, tall and rolling up close (the audio envelope swells it).
+    function ampAt(v, mul) {
+      return lerp(0.4, 30, Math.pow(v, 1.4)) * mul;
     }
 
     // light reaching the surface: strong at the hazy horizon, dim up close.
     function sunlight(u, v) {
-      const depth = lerp(1.0, 0.1, smooth(0, 1, v));
-      const toward = 1 - 0.35 * Math.abs(u - SUN_U); // warmer near the sun
-      return depth * clamp(toward, 0.55, 1);
+      const depth = lerp(1.0, 0.12, smooth(0, 1, v));
+      const toward = 1 - 0.32 * Math.abs(u - SUN_U); // warmer near the sun
+      return depth * clamp(toward, 0.5, 1);
     }
 
     // ---- the boat ---------------------------------------------------------
@@ -137,11 +153,13 @@ export default function Ocean({ motionRef }) {
       const bv = boat.v + Math.sin(time * 0.043 + 1.2) * 0.05;
       const [bx, byBase] = project(bu, bv);
 
-      // bob with the swell + a small beat kick; roll a few degrees
-      const swell = crest(bu, bv, time);
-      const bob = swell * 4 + Math.sin(time * 1.6) * 2 + beat * 5 * (1 + env);
+      // bob on the actual surface height beneath the hull + a small beat kick
+      const swell = waveDisp(bu, bv, time);
+      const bob = swell * ampAt(bv, 1 + env * 0.6) + beat * 5 * (1 + env);
       const by = byBase + bob;
-      const roll = (Math.sin(time * 0.9) * 0.05 + swell * 0.04);
+      // roll into the local slope of the swell (finite difference along v)
+      const slope = waveDisp(bu, bv + 0.012, time) - swell;
+      const roll = Math.sin(time * 0.9) * 0.04 + slope * 6;
       const s = lerp(0.95, 1.95, bv); // perspective scale
 
       // ---- broken reflection on the water, just below the hull ----
@@ -252,6 +270,8 @@ export default function Ocean({ motionRef }) {
       ctx.fillRect(0, 0, w, yH + 30);
 
       // ---------- WATER base ----------
+      // flat tonal gradient underneath, so any sub-pixel seams between ribbons
+      // read as deep water rather than sky.
       const sea = ctx.createLinearGradient(0, yH, 0, h);
       sea.addColorStop(0, rgb(SEA_HZN));
       sea.addColorStop(0.06, rgb(mix(SEA_HZN, SEA_MID, 0.55)));
@@ -260,68 +280,113 @@ export default function Ocean({ motionRef }) {
       ctx.fillStyle = sea;
       ctx.fillRect(0, yH, w, h - yH);
 
-      // rolling swell — a few wide soft bands sliding toward the viewer
-      for (let i = 0; i < 6; i++) {
-        const v = ((t * 0.03 + i / 6) % 1);
-        const [, y] = project(0, v);
-        const band = Math.sin(t * 0.4 + i) * 0.5 + 0.5;
-        const hgt = lerp(4, 26, v);
-        ctx.fillStyle = rgb(
-          band > 0.5 ? HL_COOL : SEA_DEEP,
-          0.05 * (1 - v) + 0.02
-        );
-        ctx.fillRect(0, y - hgt / 2, w, hgt);
+      // ---------- WAVE MESH ----------
+      // The swell drifts toward the camera (the time term in waveDisp marches
+      // crests to larger v). Audio swells the amplitude.
+      const ampMul = 1 + env * 0.9 + beat * 0.45;
+
+      // precompute the normalised x of every column once
+      for (let cx = 0; cx < COLS; cx++) {
+        xArr[cx] = (cx / (COLS - 1)) * 2 - 1;
       }
 
-      // ---------- RIPPLE FACETS ----------
-      const ampBoost = 1 + env * 0.5;
-      for (const r of ripples) {
-        r.v += dt * (0.018 + r.v * 0.05) * ampBoost; // drift toward viewer
-        r.ph += dt * r.sp;
-        if (r.v > 1) {
-          r.v -= 1;
-          r.u = rand(-1.12, 1.12);
+      // 1) sample the crest line (y) + slope for every vertex of the mesh
+      for (let ry = 0; ry < NROWS; ry++) {
+        // depth eased so rows pack tight near the horizon, spread up close
+        const v = clamp(ry / (NROWS - 1), 0.0005, 1);
+        const amp = ampAt(v, ampMul);
+        const base = yH + (h - yH) * Math.pow(v, 1.55);
+        const row = ry * COLS;
+        for (let cx = 0; cx < COLS; cx++) {
+          const u = xArr[cx];
+          const disp = waveDisp(u, v, t);
+          topArr[row + cx] = base + disp * amp;
+          // store local depth-slope of the surface for crest sheen shading
+          hlArr[row + cx] = waveDisp(u, v + 0.006, t) - disp;
         }
-        const c = crest(r.u, r.v, t);
-        if (c < 0.12) continue; // only light the crests
-        const [x, y] = project(r.u, r.v);
-        const lit = sunlight(r.u, r.v);
-        const twk = 0.6 + 0.4 * Math.sin(r.ph);
-        let col;
-        if (r.v < 0.28) col = mix(HL_WARM, HL_COOL, r.v / 0.28);
-        else col = mix(HL_COOL, HL_DARK, (r.v - 0.28) / 0.72);
-        const a = clamp(
-          smooth(0.12, 0.9, c) * lit * twk * (0.5 + env * 0.5),
-          0, 0.85
-        );
-        if (a < 0.01) continue;
-        const rw = lerp(6, 44, r.v);
-        const rh = lerp(0.9, 5, r.v);
-        ctx.fillStyle = rgb(col, a);
+      }
+
+      // 2) paint ribbons far→near. Each ribbon fills the band between its own
+      //    crest line and the next row's crest line; drawn in depth order the
+      //    near crest overlaps (occludes) the dip behind it → real relief.
+      for (let ry = 0; ry < NROWS - 1; ry++) {
+        const v = ry / (NROWS - 1);
+        const row = ry * COLS;
+        const next = (ry + 1) * COLS;
+
+        // body colour of this depth band (warm hazy far → deep navy near)
+        let body;
+        if (v < 0.5) body = mix(SEA_HZN, SEA_MID, smooth(0, 0.5, v));
+        else body = mix(SEA_MID, SEA_DEEP, smooth(0.5, 1, v));
+
+        // build the closed ribbon polygon: this crest, across, next crest back
         ctx.beginPath();
-        ctx.ellipse(x, y, rw / 2, rh / 2, 0, 0, Math.PI * 2);
-        ctx.fill();
-        // a thin shadow trough just beyond the brighter near crests adds relief
-        if (r.v > 0.35) {
-          ctx.fillStyle = rgb(SEA_DEEP, a * 0.4);
-          ctx.fillRect(x - rw / 2, y + rh * 0.6, rw, rh * 0.5);
+        ctx.moveTo(0, topArr[row]);
+        for (let cx = 0; cx < COLS; cx++) {
+          ctx.lineTo(w * (0.5 + xArr[cx] * 0.5 * (0.82 + 0.18 * v)), topArr[row + cx]);
         }
+        for (let cx = COLS - 1; cx >= 0; cx--) {
+          ctx.lineTo(
+            w * (0.5 + xArr[cx] * 0.5 * (0.82 + 0.18 * v)),
+            topArr[next + cx]
+          );
+        }
+        ctx.closePath();
+        ctx.fillStyle = rgb(body, 1);
+        ctx.fill();
+
+        // crest sheen as a thin bright stroke riding the top of the ribbon,
+        // brightest where the wave face tips toward the sun and near the sun road
+        ctx.lineWidth = lerp(0.8, 2.4, v);
+        ctx.beginPath();
+        let drawing = false;
+        for (let cx = 0; cx < COLS; cx++) {
+          const u = xArr[cx];
+          const sx = w * (0.5 + u * 0.5 * (0.82 + 0.18 * v));
+          const sy = topArr[row + cx];
+          // up-face (slope<0 means crest rises toward viewer) catches light
+          const face = clamp(-hlArr[row + cx] * 3.5, 0, 1);
+          const lit = sunlight(u, v);
+          const road = smooth(0.55, 0.0, Math.abs(u - SUN_U)); // sun glitter path
+          const a = clamp(face * lit * (0.35 + road * 0.9) * (0.6 + env * 0.6), 0, 0.9);
+          if (a > 0.05) {
+            const col = mix(HL_COOL, HL_WARM, clamp(road + (1 - v) * 0.4, 0, 1));
+            if (!drawing) {
+              ctx.strokeStyle = rgb(col, a);
+              ctx.beginPath();
+              ctx.moveTo(sx, sy);
+              drawing = true;
+            } else {
+              ctx.lineTo(sx, sy);
+            }
+          } else if (drawing) {
+            ctx.stroke();
+            drawing = false;
+          }
+        }
+        if (drawing) ctx.stroke();
       }
 
       // ---------- SUN GLITTER ----------
+      // sparkles snap onto the crest line beneath them so they ride the waves
+      const ampBoost = 1 + env * 0.5;
       for (const g of glints) {
-        g.v += dt * 0.01 * ampBoost;
+        g.v += dt * 0.04 * ampBoost; // run down the sun road toward the viewer
         g.ph += dt * g.sp;
-        if (g.v > 0.24) {
+        if (g.v > 0.6) {
           g.v = 0.004;
           g.u = rand(-0.95, 0.95);
         }
         const tw = Math.sin(g.ph);
-        if (tw < 0.55) continue; // sparse, sparkling
-        const [x, y] = project(g.u, g.v);
-        const warm = 1 - 0.5 * Math.abs(g.u - SUN_U);
-        const a = clamp((tw - 0.55) * 2.0 * warm * (0.7 + beat * 0.8), 0, 1);
-        const s = lerp(0.6, 1.8, 1 - g.v / 0.24);
+        if (tw < 0.5) continue; // sparse, sparkling
+        const warm = 1 - 1.5 * Math.abs(g.u - SUN_U);
+        if (warm <= 0) continue; // glitter only on the sun road
+        const x = w * (0.5 + g.u * 0.5 * (0.82 + 0.18 * g.v));
+        const amp = ampAt(g.v, ampBoost);
+        const y =
+          yH + (h - yH) * Math.pow(g.v, 1.55) + waveDisp(g.u, g.v, t) * amp;
+        const a = clamp((tw - 0.5) * 2.0 * warm * (0.7 + beat * 0.8), 0, 1);
+        const s = lerp(0.8, 2.4, g.v);
         ctx.fillStyle = rgb(SUN_CORE, a);
         ctx.fillRect(x - s / 2, y - s / 2, s, s);
       }
