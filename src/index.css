@@ -59,15 +59,15 @@ body {
   inset: 0;
   z-index: 0;
 }
-/* daylight stage backdrop so any letterboxing reads as open sea, not void */
+/* dusk stage backdrop so any letterboxing reads as the after-sunset sea */
 .stage-ocean {
   background: linear-gradient(
     180deg,
-    #93a4b1 0%,
-    #c8c2a8 17%,
-    #3a5870 40%,
-    #16293a 70%,
-    #0a1622 100%
+    #0e1626 0%,
+    #4a3c34 16%,
+    #2a3f52 38%,
+    #122433 70%,
+    #060f1a 100%
   );
 }
 /* the heavy centre vignette suits Gargantua; the daytime sea wants a far
